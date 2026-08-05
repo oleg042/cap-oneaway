@@ -28,10 +28,18 @@ export const FAILED_RECORDINGS_KEY = "cap-extension-failed-recordings";
 const OVERLAY_TOKENS_KEY = "cap-extension-overlay-tokens";
 const LAST_WEBCAM_PREVIEW_FRAME_KEY = "cap-extension-last-webcam-preview-frame";
 const PRODUCTION_API_BASE_URL = "https://cap.so";
+// Baking the instance address in at build time is what makes the extension a
+// one-step install for a self-hosted team; otherwise every person has to find
+// the options page and paste a URL before they can record. Still overridable
+// there afterwards.
+const BUILD_TIME_API_BASE_URL = import.meta.env.VITE_CAP_API_BASE_URL as
+	| string
+	| undefined;
 const DEFAULT_API_BASE_URL =
-	import.meta.env.MODE === "development"
+	BUILD_TIME_API_BASE_URL ||
+	(import.meta.env.MODE === "development"
 		? "http://localhost:3000"
-		: PRODUCTION_API_BASE_URL;
+		: PRODUCTION_API_BASE_URL);
 
 export type MediaAccessState = {
 	camera: boolean;
