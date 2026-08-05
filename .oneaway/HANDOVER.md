@@ -1,7 +1,7 @@
 # Handover — Self-Hosted Video Platform (Loom replacement)
 
-**Date:** 2026-08-05
-**Repo:** `~/Projects/cap` · branch `oneaway/local-transcription` · 17 commits
+**Date:** 2026-08-06
+**Repo:** `~/Projects/cap` · branch `oneaway/local-transcription`
 **Upstream:** `CapSoftware/Cap` @ `1bd1ccd09`, remote named `upstream` (not `origin`)
 **Written for:** an agent with context on `oneaway-app` (the client portal) and the
 Neon estate, picking this up to add portal launch controls and sync transcripts
@@ -21,8 +21,9 @@ Two things will save you the most time:
 
 The single most important finding: **Cloudflare Workers AI transcribes with
 byte-identical output to the local Whisper this team already trusts, free at
-their volume, and it already works with credentials on the machine.** That
-removes the entire justification for forking Cap's desktop app. See §4.3.
+their volume, and it now runs on the same Cloudflare account as the video
+storage.** That removes the entire justification for forking Cap's desktop app.
+See §4.3.
 
 ---
 
@@ -46,7 +47,7 @@ Goals, in the user's words:
 | Storage | ✅ **live on Cloudflare R2** (bucket `cap`, Western Europe) |
 | Storage round-trip | ✅ proven byte-identical via `smoke-test.sh` |
 | Chrome extension recorder | ✅ built + packaged, points at our instance |
-| Transcription | ⚠️ **decided but not wired** — see §4 |
+| Transcription | ⚠️ **decided + credentials live, not yet wired into Cap** — see §4 |
 | Desktop app | ❌ blocked on full Xcode; **probably unnecessary now** |
 | Production hosting | ❌ not started, still localhost |
 | Portal / Neon integration | ❌ not started — **this is you** |
@@ -117,8 +118,13 @@ it apart. Verified findings:
 ### 4.3 Where it landed — Cloudflare Workers AI
 
 The user's requirement was "no third-party transcription vendor." Cloudflare
-turns out to satisfy the spirit of it, because **Cloudflare already stores the
-videos** — sending audio to Workers AI adds no new party.
+satisfies the spirit of it, because **Cloudflare already stores the videos** —
+and since 2026-08-06 it is literally the *same account*, so audio and video sit
+under one billing relationship. No new party.
+
+Credentials are in `~/Projects/cap/.env` as `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_AI_TOKEN`, `CLOUDFLARE_AI_MODEL`. **Nothing in Cap reads them yet** —
+wiring is the remaining work.
 
 Measured on this account, real data:
 
@@ -311,21 +317,19 @@ All in `.oneaway/scripts/`, all tested unless noted:
 next to this file.** Kept out of git because §6.4 flags that AGPL §13 may
 require publishing this fork, and committed secrets live in history forever.
 
-### ⚠️ There are two separate Cloudflare accounts
+### One Cloudflare account
 
-| Purpose | Account | State |
-|---|---|---|
-| **R2 storage** (videos) | `05fd8b27a383fcad5bab69af4b1a1ddf` | ✅ live |
-| **Workers AI** (transcription) | a *different* account, see credentials file | ✅ verified |
+Everything is on **`05fd8b27a383fcad5bab69af4b1a1ddf`** — R2 storage and
+Workers AI transcription. Unified billing, one 10,000 neurons/day free
+allowance, one dashboard.
 
-Tested both directions: the Workers AI token returns `Authentication error`
-against the R2 account, and the R2 token has no Workers AI permission. This is
-the actual state, not a note-taking error.
+This was briefly split across two accounts and was consolidated on 2026-08-06 by
+creating a `cap-workers-ai` token on the R2 account. An older Cloudflare token
+in `~/Projects/oneawaygent/.env` belongs to a different account and has no
+access here — **it is not relevant to this project, don't reach for it.**
 
-Consequences: separate billing, separate free-tier allowances (10,000
-neurons/day is **per account**), separate dashboards. Before production, decide
-whether to consolidate — enabling Workers AI on the R2 account is the easier
-direction, since moving buckets is harder than enabling a service.
+Two tokens, because R2 needs S3-style credentials and Workers AI needs a
+standard API token. Both account-level, not user-level.
 
 - **Bucket:** `cap`, Automatic location → Western Europe, **not changeable**
 - **R2 token:** account-level, `cap-selfhost`, Object Read & Write scoped to
