@@ -1,0 +1,25 @@
+# Makes storage genuinely configurable from .env.
+#
+# The base docker-compose.yml hardcodes most of the storage settings and maps
+# the rest to MinIO-specific variable names:
+#
+#   CAP_AWS_ACCESS_KEY: ${MINIO_ROOT_USER:-cap-admin}   # not CAP_AWS_ACCESS_KEY
+#   CAP_AWS_BUCKET: cap                                 # hardcoded
+#   CAP_AWS_REGION: us-east-1                           # hardcoded
+#   S3_INTERNAL_ENDPOINT: http://minio:9000             # hardcoded
+#
+# So setting CAP_AWS_* in .env has no effect on the base file — the container
+# keeps talking to MinIO while the config claims otherwise. Compose merges this
+# override automatically; the defaults below reproduce the MinIO setup, so an
+# instance with none of these set behaves exactly as before.
+
+services:
+  cap-web:
+    environment:
+      CAP_AWS_ACCESS_KEY: ${CAP_AWS_ACCESS_KEY:-${MINIO_ROOT_USER:-cap-admin}}
+      CAP_AWS_SECRET_KEY: ${CAP_AWS_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-cap-minio-pwd-456}}
+      CAP_AWS_BUCKET: ${CAP_AWS_BUCKET:-cap}
+      CAP_AWS_REGION: ${CAP_AWS_REGION:-us-east-1}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-${S3_PUBLIC_URL:-http://localhost:9000}}
+      S3_INTERNAL_ENDPOINT: ${S3_INTERNAL_ENDPOINT:-http://minio:9000}
+      S3_PATH_STYLE: ${S3_PATH_STYLE:-true}

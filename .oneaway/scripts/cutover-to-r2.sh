@@ -89,16 +89,32 @@ for _ in $(seq 1 60); do
 done
 
 echo "==> 4/5 Proving the new path with real bytes"
-if ! ./.oneaway/scripts/smoke-test.sh; then
+SMOKE_LOG="$(mktemp -t capsmokelog)"
+if ! ./.oneaway/scripts/smoke-test.sh 2>&1 | tee "$SMOKE_LOG"; then
   echo "SMOKE TEST FAILED against R2" >&2
+  rm -f "$SMOKE_LOG"
   restore
   exit 1
 fi
 
-echo "==> 5/5 Confirming the bytes actually landed in R2, not MinIO"
-COUNT=$(docker run --rm --entrypoint sh minio/mc:latest -c \
-  "mc alias set r2 $ENDPOINT '$R2_ACCESS_KEY' '$R2_SECRET_KEY' >/dev/null && mc ls --recursive r2/$BUCKET | wc -l" 2>/dev/null | tr -d ' ')
-echo "    $COUNT object(s) in R2"
+# A passing smoke test only proves *some* storage works. It passed against MinIO
+# once while the config claimed R2, because the base compose file hardcodes the
+# storage settings and silently ignored .env. The host the app signs its URLs
+# for is the only thing that distinguishes a real cutover from a convincing
+# one — and the smoke test deletes its own object, so counting objects in the
+# bucket afterwards proves nothing either.
+echo "==> 5/5 Confirming the app is actually signing against R2"
+EXPECTED_HOST=$(printf '%s' "$ENDPOINT" | cut -d/ -f3)
+SIGNED_HOST=$(grep -m1 "signed for" "$SMOKE_LOG" | sed 's|.*signed for ||' | cut -d/ -f3)
+rm -f "$SMOKE_LOG"
+echo "    expected: $EXPECTED_HOST"
+echo "    actual:   $SIGNED_HOST"
+if [ "$SIGNED_HOST" != "$EXPECTED_HOST" ]; then
+  echo "THE APP IS NOT USING R2 — it signed against $SIGNED_HOST." >&2
+  echo "The config says R2 but the container is still talking to something else." >&2
+  restore
+  exit 1
+fi
 
 cat <<DONE
 
