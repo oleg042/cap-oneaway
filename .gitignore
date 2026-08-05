@@ -83,3 +83,6 @@ tmp/
 apps/chrome-extension/dist/
 .oneaway/dist/
 .env.pre-r2.*
+
+# Real secrets for handover — never committed
+.oneaway/CREDENTIALS.local.md

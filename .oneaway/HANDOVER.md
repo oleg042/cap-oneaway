@@ -307,27 +307,67 @@ All in `.oneaway/scripts/`, all tested unless noted:
 
 ## 9. Credentials and coordinates
 
-- **R2 account:** `05fd8b27a383fcad5bab69af4b1a1ddf`, bucket `cap`, endpoint
-  `https://05fd8b27a383fcad5bab69af4b1a1ddf.r2.cloudflarestorage.com`
-- **R2 token:** account-level, named `cap-selfhost`, Object Read & Write scoped
-  to `cap` only. Account-level on purpose — a user token dies if the user leaves
-  the org. Secret is in `~/Projects/cap/.env` (gitignored).
-- **Workers AI:** uses `CLOUDFLARE_API_TOKEN` from
-  `~/Projects/oneawaygent/.env`. Verified working for Workers AI; **that token
-  has no R2 permission** (returns `Authentication error`).
+**Real secrets are in `.oneaway/CREDENTIALS.local.md` — gitignored, on disk
+next to this file.** Kept out of git because §6.4 flags that AGPL §13 may
+require publishing this fork, and committed secrets live in history forever.
+
+### ⚠️ There are two separate Cloudflare accounts
+
+| Purpose | Account | State |
+|---|---|---|
+| **R2 storage** (videos) | `05fd8b27a383fcad5bab69af4b1a1ddf` | ✅ live |
+| **Workers AI** (transcription) | a *different* account, see credentials file | ✅ verified |
+
+Tested both directions: the Workers AI token returns `Authentication error`
+against the R2 account, and the R2 token has no Workers AI permission. This is
+the actual state, not a note-taking error.
+
+Consequences: separate billing, separate free-tier allowances (10,000
+neurons/day is **per account**), separate dashboards. Before production, decide
+whether to consolidate — enabling Workers AI on the R2 account is the easier
+direction, since moving buckets is harder than enabling a service.
+
+- **Bucket:** `cap`, Automatic location → Western Europe, **not changeable**
+- **R2 token:** account-level, `cap-selfhost`, Object Read & Write scoped to
+  `cap`. Account-level on purpose — a user token dies if that person leaves the
+  org, which was a bus-factor risk raised in review.
 - **Cap `.env`:** freshly generated `NEXTAUTH_SECRET`,
-  `DATABASE_ENCRYPTION_KEY`, `MEDIA_SERVER_WEBHOOK_SECRET`. Note the upstream
-  repo ships a **public default** `DATABASE_ENCRYPTION_KEY` — it encrypts video
-  passwords and stored S3 credentials, so never deploy with it.
+  `DATABASE_ENCRYPTION_KEY`, `MEDIA_SERVER_WEBHOOK_SECRET`. Upstream ships a
+  **public default** `DATABASE_ENCRYPTION_KEY` — it encrypts video passwords and
+  stored S3 credentials, so never deploy with it.
 
 ## 10. Open questions
 
-1. **Does Workers AI accept a vocabulary/initial prompt?** Decides whether
-   proper nouns like EmailBison, Maildoso, OneAway transcribe correctly (§4.3).
+1. **Proper nouns transcribe badly** — "email Bison", "Maildozo", "one-away".
+   Two independent fixes, and the second does not depend on the first:
+   - Does Workers AI accept a vocabulary/initial prompt? **Unverified.**
+   - **`~/Projects/scribe/lessons/corrections.py` already solves this**, and it
+     is this team's own code. It applies vocabulary correction *over stored
+     output* rather than biasing the model: exact pair replacement for known
+     heard-forms ("Advan Jobstead Done" → "Advanced Jobs To Be Done"), then
+     fuzzy near-miss for casing drift. Because it runs against stored
+     transcripts, **adding a pair later fixes every past transcript without
+     re-running the model** — which is exactly what you want when a new client
+     name enters the vocabulary. Porting this into the transcript pipeline is
+     probably higher value than chasing a prompt parameter.
 2. **What exactly are "launch controls"?** (§5.4)
 3. **Where does production run** — Railway (Cap ships a one-click deploy) or
    existing OneAway infrastructure?
 4. **Is the browser-Parakeet path still wanted** now Workers AI is proven? Only
    matters if a client contract demands audio never leave the device.
-5. **Retention policy.** Nobody deletes recordings. This is the cost lever over
-   three years, not quality settings.
+5. **Retention policy.** Nobody deletes recordings. This is the real cost lever
+   over three years — not quality settings. Numbers to reason with, from
+   measured encodes at Cap's defaults (1080p, 30fps):
+
+   | Content | Per 5-min video | Fits in 10 GB free |
+   |---|---|---|
+   | Static (code, docs, slides) | ~15 MB | ~680 |
+   | Typical screenshare + webcam | ~45 MB | ~228 |
+   | Busy (scrolling, video playback) | ~94 MB | ~109 |
+
+   Storage is cumulative, not monthly. Past the free 10 GB it is $0.015/GB/month
+   with **zero egress** — 50 GB ≈ $0.60/month, 250 GB ≈ $3.60/month. A year of
+   team recordings costs about a dollar a month, so do not degrade quality to
+   save storage; screen content needs resolution for text legibility. If the
+   portal surfaces storage, R2 lifecycle rules can expire internal clips while
+   keeping client-facing ones — that is the lever worth building.
