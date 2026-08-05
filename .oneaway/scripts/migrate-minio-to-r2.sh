@@ -13,9 +13,17 @@
 
 set -euo pipefail
 
-: "${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID}"
 : "${R2_ACCESS_KEY:?set R2_ACCESS_KEY}"
 : "${R2_SECRET_KEY:?set R2_SECRET_KEY}"
+
+# Normally derived from the account id. Overridable so the migration can be
+# rehearsed against a throwaway endpoint before it touches real data, and so a
+# bucket bound to a custom domain still works.
+if [ -z "${R2_ENDPOINT:-}" ]; then
+  : "${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID (or R2_ENDPOINT)}"
+  R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+fi
+DST_BUCKET="${R2_BUCKET:-${CAP_AWS_BUCKET:-cap}}"
 
 BUCKET="${CAP_AWS_BUCKET:-cap}"
 MINIO_PORT="${MINIO_PORT:-9900}"
@@ -27,24 +35,24 @@ MC=(docker run --rm --network host --entrypoint sh minio/mc:latest -c)
 echo "==> Registering endpoints"
 "${MC[@]}" "
   mc alias set src http://localhost:${MINIO_PORT} '${MINIO_USER}' '${MINIO_ROOT_PASSWORD}' >/dev/null
-  mc alias set dst https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
-  mc mb --ignore-existing dst/${BUCKET} >/dev/null
+  mc alias set dst ${R2_ENDPOINT} '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
+  mc mb --ignore-existing dst/${DST_BUCKET} >/dev/null
   echo 'source objects:      '\$(mc ls --recursive src/${BUCKET} | wc -l)
-  echo 'destination objects: '\$(mc ls --recursive dst/${BUCKET} | wc -l)
+  echo 'destination objects: '\$(mc ls --recursive dst/${DST_BUCKET} | wc -l)
 "
 
 echo "==> Mirroring (resumable; re-run after a failure)"
 "${MC[@]}" "
   mc alias set src http://localhost:${MINIO_PORT} '${MINIO_USER}' '${MINIO_ROOT_PASSWORD}' >/dev/null
-  mc alias set dst https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
-  mc mirror --overwrite --retry src/${BUCKET} dst/${BUCKET}
+  mc alias set dst ${R2_ENDPOINT} '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
+  mc mirror --overwrite --retry src/${BUCKET} dst/${DST_BUCKET}
 "
 
 echo "==> Verifying (empty output below means every object matched)"
 "${MC[@]}" "
   mc alias set src http://localhost:${MINIO_PORT} '${MINIO_USER}' '${MINIO_ROOT_PASSWORD}' >/dev/null
-  mc alias set dst https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
-  mc diff src/${BUCKET} dst/${BUCKET}
+  mc alias set dst ${R2_ENDPOINT} '${R2_ACCESS_KEY}' '${R2_SECRET_KEY}' >/dev/null
+  mc diff src/${BUCKET} dst/${DST_BUCKET}
 "
 
 cat <<'DONE'
