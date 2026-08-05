@@ -191,7 +191,8 @@ overrides detection entirely.
 ### 6.3 Storage: MinIO locally, R2 in production
 
 Cap's storage is fully env-driven. MinIO and R2 are both S3 implementations, so
-promotion is a five-variable change with no code delta:
+promotion is a configuration change, but not the trivial one this spec first
+claimed — see the correction below:
 
 ```
 CAP_AWS_ACCESS_KEY, CAP_AWS_SECRET_KEY, CAP_AWS_BUCKET,
@@ -200,6 +201,19 @@ S3_PUBLIC_ENDPOINT, S3_INTERNAL_ENDPOINT   (+ S3_PATH_STYLE=false for R2)
 
 R2 is the production target: $0.015/GB/month with **zero egress fees**, which is
 the entire economic argument versus per-seat Loom pricing.
+
+**Correction (2026-08-05).** "Five env vars, no code" was wrong. The base
+`docker-compose.yml` hardcodes `CAP_AWS_BUCKET`, `CAP_AWS_REGION` and
+`S3_INTERNAL_ENDPOINT`, and maps the credentials to `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` rather than the `CAP_AWS_*` names. Setting the documented
+variables therefore had no effect, and the first cutover attempt reported
+success while the app kept writing to MinIO. `docker-compose.override.yml`
+wires them through. The lesson generalises: the only reliable signal for which
+storage backend is live is the host in a presigned URL — containers stay
+healthy and share pages still render against the wrong one.
+
+**Status: R2 is live** as of 2026-08-05, confirmed by Cloudflare's own metrics
+(8 Class A, 11 Class B operations) after a byte-identical round trip.
 
 Building against MinIO first is therefore free of architectural debt.
 

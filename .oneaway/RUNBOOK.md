@@ -88,13 +88,45 @@ Add Google for team SSO when we deploy for real.
 
 ## Storage
 
-MinIO locally, Cloudflare R2 in production. Both are S3 implementations, so
-promotion is env-only — no code change:
+**Live on Cloudflare R2** as of 2026-08-05. MinIO is still running as the
+rollback and can be retired once an existing recording has been played by a
+real person.
 
+```bash
+R2_ACCOUNT_ID=… R2_ACCESS_KEY=… R2_SECRET_KEY=… ./.oneaway/scripts/cutover-to-r2.sh
 ```
-CAP_AWS_ACCESS_KEY, CAP_AWS_SECRET_KEY, CAP_AWS_BUCKET,
-S3_PUBLIC_ENDPOINT, S3_INTERNAL_ENDPOINT, S3_PATH_STYLE=false
+
+Copies objects, rewrites config, restarts, uploads and reads back real bytes,
+then asserts the app is signing URLs against R2. Restores the previous `.env`
+and returns to MinIO if any of that fails.
+
+### Setting CAP_AWS_* in .env is not sufficient on its own
+
+An earlier version of this runbook claimed storage was env-only. It isn't. The
+base `docker-compose.yml` hardcodes most of the settings and maps the rest to
+MinIO-specific names:
+
+```yaml
+CAP_AWS_ACCESS_KEY: ${MINIO_ROOT_USER:-cap-admin}   # not CAP_AWS_ACCESS_KEY
+CAP_AWS_BUCKET: cap                                 # hardcoded
+CAP_AWS_REGION: us-east-1                           # hardcoded
+S3_INTERNAL_ENDPOINT: http://minio:9000             # hardcoded
 ```
+
+`docker-compose.override.yml` (ours, merged automatically by compose) wires the
+`.env` values through. Without it the container keeps talking to MinIO while
+the config says R2 — and every check short of inspecting a presigned URL's host
+still passes. That is exactly how the first cutover attempt reported success
+while writing nowhere near R2.
+
+### Verifying which storage is actually in use
+
+```bash
+./.oneaway/scripts/smoke-test.sh | grep "signed for"
+```
+
+The host in a presigned URL is the ground truth. Container health, a rendering
+share page, and a passing round-trip are all satisfied by the *wrong* backend.
 
 ## Transcription
 
