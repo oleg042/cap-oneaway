@@ -82,3 +82,4 @@ analysis/plans/
 tmp/
 apps/chrome-extension/dist/
 .oneaway/dist/
+.env.pre-r2.*
