@@ -21,12 +21,22 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 
-: "${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID}"
 : "${R2_ACCESS_KEY:?set R2_ACCESS_KEY}"
 : "${R2_SECRET_KEY:?set R2_SECRET_KEY}"
+# R2_ACCOUNT_ID is only needed to derive the endpoint; R2_ENDPOINT may supply it
+# directly, which is how the cutover gets rehearsed before touching real data.
+[ -n "${R2_ENDPOINT:-}" ] || : "${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID (or R2_ENDPOINT)}"
 BUCKET="${R2_BUCKET:-cap}"
 
 [ -f .env ] || { echo "no .env in $REPO" >&2; exit 1; }
+
+# The migration step needs the MinIO credentials to read the source bucket, and
+# they only exist in .env. Without this the cutover dies at step 1 with an
+# unset-variable error that looks like a bug in the migration script.
+set -a
+# shellcheck disable=SC1091
+. ./.env
+set +a
 BACKUP=".env.pre-r2.$(date +%Y%m%d-%H%M%S)"
 cp .env "$BACKUP"
 echo "==> Saved current config to $BACKUP"
@@ -39,14 +49,15 @@ restore() {
   echo "    restored from $BACKUP; storage is on MinIO again"
 }
 
+ENDPOINT="${R2_ENDPOINT:-https://${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID (or R2_ENDPOINT)}.r2.cloudflarestorage.com}"
+
 echo "==> 1/5 Copying objects to R2"
-R2_ACCOUNT_ID="$R2_ACCOUNT_ID" R2_ACCESS_KEY="$R2_ACCESS_KEY" \
-R2_SECRET_KEY="$R2_SECRET_KEY" CAP_AWS_BUCKET="$BUCKET" \
+R2_ENDPOINT="$ENDPOINT" R2_ACCESS_KEY="$R2_ACCESS_KEY" \
+R2_SECRET_KEY="$R2_SECRET_KEY" R2_BUCKET="$BUCKET" \
   ./.oneaway/scripts/migrate-minio-to-r2.sh || {
     echo "object copy failed; config untouched, still on MinIO" >&2; exit 1; }
 
 echo "==> 2/5 Rewriting storage config"
-ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 python3 - "$ENDPOINT" "$R2_ACCESS_KEY" "$R2_SECRET_KEY" "$BUCKET" <<'PY'
 import re, sys
 endpoint, access, secret, bucket = sys.argv[1:5]
