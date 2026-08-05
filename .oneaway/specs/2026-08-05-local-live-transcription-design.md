@@ -257,17 +257,20 @@ UI and status polling. Not bundled into the installer. No work required.
 
 ## 8. Milestones
 
-| # | Deliverable | Exit criteria |
+Status as of 2026-08-05, after the review in §12.
+
+| # | Deliverable | State |
 |---|---|---|
-| 0 | Self-hosted stack running locally | Record → upload → play back at a share link, MinIO-backed |
-| 1 | Desktop app built from source, pointed at local server | Official flow works against `localhost:3000` |
-| 2 | Parakeet quality validated on real team voices | Subjective pass on accent, jargon, filler |
-| 3 | `live_captions.rs` — ported pure logic + parity tests | Ported tests green against upstream's suite |
-| 4 | Orchestrator wired to `SegmentUploader` | Transcript exists on share page seconds after stop |
-| 5 | Thread/QoS tuning | No dropped frames on the slowest team machine |
-| 6 | Claude agent for summaries | Titles/summaries/chapters generated from our own agent |
-| 7 | R2 promotion | Five env vars swapped; videos serve from R2 |
-| 8 | Signed cross-platform release | Teammates install a notarized `.dmg` / signed `.exe` and auto-update |
+| 0 | Self-hosted stack running locally | **done** — verified by `.oneaway/scripts/smoke-test.sh`: 19,465 bytes uploaded through a presigned URL and read back byte-identical through the playback path |
+| 1 | A recorder pointed at our instance | **done, and cheaper than specced** — the Chrome extension needs no desktop toolchain at all (§12.2). The desktop build is blocked on full Xcode and is now optional |
+| 2 | Parakeet quality validated on real voices | blocked on M1 desktop build; moot if §12.1 resolves to cloud ASR |
+| 3 | Chunk-scheduling core in Rust | **done** — `crates/live-captions-core`, 26 tests, clippy-clean |
+| 4 | Orchestrator wired to segments | not started; **contingent on §12.1** |
+| 5 | Thread/QoS tuning | not started; contingent on M4 |
+| 6 | Claude agent for summaries | not started. Cheap, independent, wanted under every option |
+| 7 | R2 promotion | **prepared** — `.oneaway/r2.env.example`, `migrate-minio-to-r2.sh`. Blocked on credentials only |
+| 8 | Signed cross-platform release | **only required if M4 proceeds.** Unnecessary otherwise (§12.2) |
+| 9 | Production hosting, backups, SSO | **not specced originally — now blocking** (§12.3) |
 
 ## 9. Testing
 
@@ -299,3 +302,93 @@ UI and status polling. Not bundled into the installer. No work required.
    Parakeet's 25 European languages, §6.1's default flips to whisper.
 3. Where does the production instance run — Railway (one-click Cap deploy exists)
    or existing OneAway infrastructure?
+
+## 12. Review outcomes
+
+Three adversarial reviews ran on 2026-08-05 — a systems architect, a B2B agency
+founder, and a RevOps leader. The architect's code findings are fixed
+(`775d194ea`). The strategic findings below change the plan and are recorded
+here as open decisions rather than silently applied, because they narrow scope
+the author did not ask to narrow.
+
+Every claim below was verified against the code, not taken on the reviewer's
+word. One was overstated and is corrected in §12.5.
+
+### 12.1 The cost case for on-device ASR does not survive — the privacy case might
+
+§4 says stock self-hosted Cap has no transcription, framing this project as
+what makes the instance useful. That is true but misleading, and it was written
+by the author. `workflows/transcribe.ts` and `live-transcribe.ts` are complete;
+what is missing is an API key, not code. At this team's volume a cloud key runs
+roughly **$5/month**.
+
+Against that, on-device ASR requires forking the desktop app, which drags in the
+whole release pipeline (§12.2), against an upstream shipping ~594 commits/month.
+
+The honest argument that remains is **confidentiality**: client recordings never
+leaving the machine is a real position for an agency handling client data. That
+is a different case from the one this spec originally made, and it should be
+decided on its own terms.
+
+The architect added a sharper version of the same question: **does this need to
+be chunked at all?** Chunking exists because AssemblyAI is remote and
+per-minute-billed. Neither constraint survives on-device — Parakeet runs several
+times faster than real time, and at stop the audio is already on local disk.
+Transcribing the finished file once costs about a minute of extra latency and
+removes crash-resume, two-writer contention, the global transcription lock, and
+encoder contention entirely. §1 asserts the near-instant transcript as a
+requirement; it was inherited from the AssemblyAI design, never chosen.
+
+### 12.2 The desktop fork is optional, and that was the expensive assumption
+
+`serverUrl` is a shipped user-facing setting (`general.tsx:748`, read by
+`web-api.ts` and `auth.ts`), so Cap's **official signed binary** already points
+at a self-hosted instance. The Chrome extension does too: its manifest requests
+`http://*/*` and `https://*/*`, and the address is a stored setting.
+
+So milestone 8 — signing, notarization, Windows certificates, an update channel
+— is not a cost of self-hosting. It is a cost of **modifying the desktop app**,
+which we only do for on-device ASR. A browser extension cannot run a local
+model, so §12.1 and this decision are the same decision.
+
+Cap's commercial licence ($29/yr per seat) applies to their binaries and
+explicitly not to builds from source (`commercial-license.mdx:13`), so paying it
+is a legitimate third option.
+
+### 12.3 Client-facing gaps, now blocking
+
+The spec optimises for the recorder's machine and is silent on the viewer — who,
+for this business, is a client or prospect. Verified against the code:
+
+- **Viewer analytics do not exist self-hosted.** Every view metric sources from
+  Tinybird, which disables itself without `TINYBIRD_TOKEN`/`TINYBIRD_HOST`. "Did
+  the prospect watch it" currently has no answer.
+- **The share page hides transcripts without an AssemblyAI key.**
+  `page.tsx:497` gates the transcript UI on `Boolean(env.ASSEMBLY_API_KEY)`. A
+  perfect local transcript would not render. §5.2's claim that the share page
+  "already works" is false in our target deployment, and fixing it is part of
+  M4, not an assumption behind it.
+- **Custom domains are Vercel-locked.** `domain-utils.ts` calls `api.vercel.com`
+  with `VERCEL_PROJECT_ID`. Serve the instance from our own domain via
+  `CAP_URL`; the in-app feature is dead code on other infrastructure.
+- **Share links die with MySQL.** The share-ID-to-object mapping lives in the
+  database, so losing it kills every client link even though R2 still holds the
+  bytes. No backup, restore test, or RPO existed anywhere in this spec.
+- **Migrating storage without copying objects breaks existing links silently.**
+  Addressed by `migrate-minio-to-r2.sh` and gated by `smoke-test.sh`.
+
+### 12.4 Operational safety net, added as blocking
+
+One person builds this; fifteen depend on it; it touches client deliverables.
+Minimum before anyone outside a pilot uses it: managed database with
+point-in-time restore, R2 versioning and a retention policy, Google SSO, an
+uptime check into Slack, a second admin who has personally run the restore, and
+**Loom kept alive for 90 days** as the rollback.
+
+### 12.5 Where a reviewer was wrong
+
+One finding claimed `NEXT_PUBLIC_WEB_URL` is baked in at Docker build time and
+therefore unfixable at runtime. The string is baked, but the bundle reads
+`env.WEB_URL ?? "http://localhost:3000"`, and our instance correctly emits its
+real address. Recorded because the review is otherwise load-bearing, and it
+should be clear which parts were verified rather than assumed.
