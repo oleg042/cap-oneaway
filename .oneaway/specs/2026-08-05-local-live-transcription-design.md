@@ -263,13 +263,15 @@ Status as of 2026-08-05, after the review in §12.
 |---|---|---|
 | 0 | Self-hosted stack running locally | **done** — verified by `.oneaway/scripts/smoke-test.sh`: 19,465 bytes uploaded through a presigned URL and read back byte-identical through the playback path |
 | 1 | A recorder pointed at our instance | **done, and cheaper than specced** — the Chrome extension needs no desktop toolchain at all (§12.2). The desktop build is blocked on full Xcode and is now optional |
-| 2 | Parakeet quality validated on real voices | blocked on M1 desktop build; moot if §12.1 resolves to cloud ASR |
-| 3 | Chunk-scheduling core in Rust | **done** — `crates/live-captions-core`, 26 tests, clippy-clean |
-| 4 | Orchestrator wired to segments | not started; **contingent on §12.1** |
-| 5 | Thread/QoS tuning | not started; contingent on M4 |
-| 6 | Claude agent for summaries | not started. Cheap, independent, wanted under every option |
-| 7 | R2 promotion | **prepared** — `.oneaway/r2.env.example`, `migrate-minio-to-r2.sh`. Blocked on credentials only |
-| 8 | Signed cross-platform release | **only required if M4 proceeds.** Unnecessary otherwise (§12.2) |
+| 2 | Parakeet quality validated on real voices | **blocked on Xcode.** Now the first real gate — everything downstream assumes the local engine is good enough |
+| 3 | Chunk-scheduling core in Rust | **done, and no longer on the critical path** (§12.0). 26 tests, clippy-clean, parked as an option |
+| 4 | ~~Orchestrator wired to segments~~ | **superseded by §12.0** — transcribe-at-stop needs no chunk orchestrator |
+| 5 | ~~Thread/QoS tuning~~ | **superseded by §12.0** — nothing competes with the encoder if inference runs after stop |
+| 4b | Transcribe-at-stop, upload transcript with the video | **the build.** Reuses the engine already in `captions.rs`; writes a canonical transcript, not a provisional one |
+| 4c | Replace the `ASSEMBLY_API_KEY` gate with a capability flag | **required** — otherwise our transcripts never render (§12.3) |
+| 6 | Claude agent for summaries | not started. Cheap, independent, wanted regardless |
+| 7 | R2 promotion | **prepared and rehearsed end to end** (`cutover-to-r2.sh`). Blocked on credentials only |
+| 8 | Signed cross-platform release | **required** — §12.0 forks the desktop app, so this cost is accepted |
 | 9 | Production hosting, backups, SSO | **not specced originally — now blocking** (§12.3) |
 
 ## 9. Testing
@@ -313,6 +315,51 @@ the author did not ask to narrow.
 
 Every claim below was verified against the code, not taken on the reviewer's
 word. One was overstated and is corrected in §12.5.
+
+### 12.0 DECIDED 2026-08-05: on-device, transcribed at stop
+
+The trade in §12.1 was put to the author twice and resolved: **no third-party
+transcription vendor, at any price.** Client audio stays on the recorder's
+machine; only the resulting text is uploaded. Treat §12.1 as settled history.
+
+The author's own phrasing changed the architecture:
+
+> "it will pass the video with an already created transcript to wherever the
+> video is stored"
+
+That is **transcribe-at-stop**, not the chunk-during-recording design in §5, and
+it is the architect's Option B from §12.1's closing question. §5's chunking was
+inherited from Cap's cloud path, where it exists because AssemblyAI is remote
+and per-minute-billed. Neither constraint survives on-device.
+
+Superseded by this decision — no longer to be built:
+
+- the chunk orchestrator driven by `SegmentUploader` (M4)
+- the crash-resume cursor and its live artifact
+- two-writer contention on `transcription.live.json` (the architect's C5)
+- inference competing with the encoder, and the thread/QoS work it forced (M5,
+  §7.1)
+
+What replaces it: on stop, transcribe the finished local file with the engine
+already vendored in `captions.rs`, then upload the transcript alongside the
+video as the **canonical** transcript rather than a provisional one. The cost is
+roughly a minute of added latency on a ten-minute recording, against a video
+nobody watches within a minute of it being made.
+
+`crates/live-captions-core` is no longer on the critical path. It stays on the
+branch — 26 tests, clippy-clean — as a working option if chunked live
+transcription is ever wanted. It should not pull M4 through the door behind it.
+
+Consequences that remain:
+
+- The **desktop app must be forked**; a browser extension cannot run a local
+  model. Full Xcode becomes a hard prerequisite (§12.2's release-pipeline cost
+  is therefore accepted, not avoided).
+- §12.3's share-page gate still applies: `page.tsx:497` hides the transcript UI
+  unless `ASSEMBLY_API_KEY` is set. With no cloud key ever, that check must
+  become a capability flag or the transcripts we generate will not render.
+- The Chrome extension remains the no-install path for recordings that do not
+  need a transcript.
 
 ### 12.1 The cost case for on-device ASR does not survive — the privacy case might
 
