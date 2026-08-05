@@ -20,8 +20,14 @@ and no per-minute bill was incurred.
 ## 2. Non-goals
 
 - Replacing Cap's editor, recording pipeline, or share pages.
-- Supporting external customers. This is an internal tool; AGPL obligations are
-  satisfied by keeping the fork available to anyone we distribute binaries to.
+- Building a product for external customers. Note this is *not* the same as
+  "only internal viewers" — share links go to clients and prospects (see §12).
+
+  An earlier draft claimed AGPL obligations were satisfied by making the fork
+  available to whoever we distribute binaries to. That is wrong. AGPL §13
+  triggers on **network interaction**, not distribution: every prospect who
+  loads a share page is a remote user of modified software. Publish the fork, or
+  carry a source link in the share-page footer.
 - Speaker diarization. Screen recordings are near-always single-speaker.
 - On-device LLM summarization. Titles, summaries, and chapters stay in the cloud
   (see §6.4).

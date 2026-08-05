@@ -9,6 +9,12 @@
 //! tests without the Apple toolchain the desktop crate requires.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+/// Ceiling on a single segment's duration. Segments are seconds-scale; anything
+/// beyond this is corrupt input, and letting it through would saturate the
+/// `f64 as i64` casts that produce chunk offsets.
+pub const MAX_SEGMENT_SECONDS: f64 = 3600.0;
 
 /// First chunk fires fast so a transcript exists almost immediately.
 pub const INITIAL_CHUNK_SECONDS: f64 = 5.0;
@@ -24,22 +30,57 @@ pub const MAX_CHUNKS: u32 = 420;
 pub const MAX_CHUNK_ATTEMPTS: u32 = 2;
 
 pub const LIVE_TRANSCRIPT_VERSION: u32 = 1;
+/// Must track `EDIT_TRANSCRIPT_VERSION` in `apps/web/lib/edit-transcript.ts`.
+/// Hard-coded rather than caller-supplied so an upstream bump fails a test here
+/// instead of silently writing a stale version number.
+pub const EDIT_TRANSCRIPT_VERSION: u32 = 3;
 /// Sentinel for "nothing processed yet": 0 is a legitimate segment index in
 /// 0-based manifests, so the cursor starts below every real index.
 pub const LIVE_TRANSCRIPT_NO_SEGMENTS: i64 = -1;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+/// Duration assumed for a manifest entry written as a bare number, matching
+/// `Video.normalizeSegmentEntry` in `packages/web-domain/src/Video.ts`.
+pub const BARE_SEGMENT_DURATION_SECONDS: f64 = 3.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct SegmentEntry {
     pub index: i64,
     /// Seconds, matching the manifest's own units.
     pub duration: f64,
 }
 
+/// `SegmentManifestEntry` is a union of a bare index and a full struct. A bare
+/// number carries no duration, and every later `start_ms` is a running sum of
+/// durations, so defaulting it wrong silently shifts the whole timeline.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(untagged)]
+enum RawSegmentEntry {
+    BareIndex(f64),
+    Full { index: f64, duration: f64 },
+}
+
+impl<'de> Deserialize<'de> for SegmentEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match RawSegmentEntry::deserialize(deserializer)? {
+            RawSegmentEntry::BareIndex(index) => SegmentEntry {
+                index: index as i64,
+                duration: BARE_SEGMENT_DURATION_SECONDS,
+            },
+            RawSegmentEntry::Full { index, duration } => SegmentEntry {
+                index: index as i64,
+                duration,
+            },
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub struct SegmentManifest {
+    #[serde(default)]
     pub audio_segments: Vec<SegmentEntry>,
+    #[serde(default)]
     pub audio_init_uploaded: bool,
+    #[serde(default)]
     pub is_complete: bool,
 }
 
@@ -78,18 +119,22 @@ pub fn plan_segments_audio_extraction(
     }
 
     let mut entries: Vec<SegmentEntry> = Vec::new();
+    let mut seen: HashSet<i64> = HashSet::new();
     for raw in &manifest.audio_segments {
-        if !raw.index.is_positive() && raw.index != 0 {
+        if raw.index < 0 {
             return SegmentsAudioPlan::Unavailable {
-                reason: format!("invalid audio segment entry (index={})", raw.index),
+                reason: format!("invalid audio segment index ({})", raw.index),
             };
         }
-        if !raw.duration.is_finite() || raw.duration < 0.0 {
+        if !raw.duration.is_finite() || raw.duration < 0.0 || raw.duration > MAX_SEGMENT_SECONDS {
             return SegmentsAudioPlan::Unavailable {
-                reason: format!("invalid audio segment entry (index={})", raw.index),
+                reason: format!(
+                    "invalid audio segment duration ({}) at index {}",
+                    raw.duration, raw.index
+                ),
             };
         }
-        if !entries.iter().any(|entry| entry.index == raw.index) {
+        if seen.insert(raw.index) {
             entries.push(*raw);
         }
     }
@@ -277,6 +322,176 @@ pub struct LiveTranscriptArtifact {
     /// Disqualifies the artifact from promotion to the canonical transcript.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub has_gaps: bool,
+    /// Monotonic write counter. Both this crate and the server workflow write
+    /// the same object key with no conditional-put, so without a sequence
+    /// number a lost update is undetectable — wall-clock `updated_at` cannot
+    /// order writes across an NTP step or a machine sleep.
+    #[serde(default)]
+    pub revision: u64,
+}
+
+/// Lenient mirror of the artifact used only for reading.
+///
+/// The TypeScript reader coerces rather than rejects, and the artifact is the
+/// crash-resume cursor: refusing one malformed field would reset the cursor and
+/// silently re-transcribe the whole recording from zero. A word with a NaN
+/// `endMs` is not hypothetical — `offsetChunkWords` emits one whenever an
+/// engine reports a non-finite end, and `JSON.stringify(NaN)` writes `null`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawArtifact {
+    version: u32,
+    #[serde(default)]
+    state: Option<serde_json::Value>,
+    #[serde(default)]
+    language_code: Option<serde_json::Value>,
+    #[serde(default)]
+    last_audio_segment_index: Option<f64>,
+    #[serde(default)]
+    transcribed_duration_ms: Option<f64>,
+    #[serde(default)]
+    words: Vec<serde_json::Value>,
+    #[serde(default)]
+    vtt: Option<String>,
+    #[serde(default)]
+    updated_at: Option<String>,
+    #[serde(default)]
+    has_gaps: bool,
+    #[serde(default)]
+    revision: u64,
+}
+
+fn word_from_value(value: &serde_json::Value) -> Option<TranscriptWord> {
+    let text = value.get("text")?.as_str()?.to_string();
+    let start_ms = value.get("startMs")?.as_f64()?;
+    // A null/NaN endMs collapses to the start rather than dropping the word:
+    // losing a word silently corrupts the transcript, a zero-width one does not.
+    let end_ms = value
+        .get("endMs")
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(start_ms);
+
+    Some(TranscriptWord {
+        id: value
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        text,
+        start_ms: start_ms as i64,
+        end_ms: (end_ms as i64).max(start_ms as i64),
+        confidence: value.get("confidence").and_then(serde_json::Value::as_f64),
+        speaker: value
+            .get("speaker")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        channel: value
+            .get("channel")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+fn format_timestamp(milliseconds: i64) -> String {
+    let total = milliseconds.max(0);
+    let hours = total / 3_600_000;
+    let minutes = (total % 3_600_000) / 60_000;
+    let seconds = (total % 60_000) / 1_000;
+    let millis = total % 1_000;
+
+    format!("{hours:02}:{minutes:02}:{seconds:02}.{millis:03}")
+}
+
+/// Mirrors `isExactFillerToken`: repeated-letter interjections only, so real
+/// words that merely start with the same letters survive.
+fn is_filler_token(token: &str) -> bool {
+    fn runs(token: &str, first: char, second: char) -> bool {
+        let mut chars = token.chars();
+        let mut leading = 0;
+        let mut trailing = 0;
+        let mut current = chars.next();
+
+        while current == Some(first) {
+            leading += 1;
+            current = chars.next();
+        }
+        while current == Some(second) {
+            trailing += 1;
+            current = chars.next();
+        }
+
+        leading > 0 && trailing > 0 && current.is_none()
+    }
+
+    let token: String = token
+        .to_lowercase()
+        .trim_matches(|c: char| c.is_ascii_punctuation())
+        .to_string();
+
+    token == "er"
+        || runs(&token, 'u', 'm')
+        || runs(&token, 'u', 'h')
+        || runs(&token, 'a', 'h')
+        || runs(&token, 'h', 'm')
+        || token
+            .strip_prefix('e')
+            .is_some_and(|rest| runs(rest.trim_start_matches('e'), 'r', 'm'))
+}
+
+/// Port of `formatToWebVTT` composed with `editTranscriptWordsToCaptionVtt`'s
+/// filler-word filter. Cue breaks land on sentence punctuation, a gap over
+/// 500ms, or eight words.
+pub fn render_caption_vtt(words: &[TranscriptWord]) -> String {
+    let mut output = String::from("WEBVTT\n\n");
+
+    let words: Vec<&TranscriptWord> = words
+        .iter()
+        .filter(|word| !is_filler_token(&word.text))
+        .collect();
+    if words.is_empty() {
+        return output;
+    }
+
+    let mut caption_index = 1;
+    let mut group: Vec<&str> = Vec::new();
+    let mut start = format_timestamp(words[0].start_ms);
+    let mut word_count = 0;
+
+    for (i, word) in words.iter().enumerate() {
+        group.push(&word.text);
+        word_count += 1;
+
+        let next = words.get(i + 1);
+        let should_break = word.text.ends_with([',', '.', '!', '?', ';', ':'])
+            || next.is_some_and(|next| next.start_ms - word.end_ms > 500)
+            || word_count == 8;
+
+        if should_break {
+            let end = format_timestamp(word.end_ms);
+            output.push_str(&format!(
+                "{caption_index}\n{start} --> {end}\n{}\n\n",
+                group.join(" ")
+            ));
+            caption_index += 1;
+            group.clear();
+            if let Some(next) = next {
+                start = format_timestamp(next.start_ms);
+            }
+            word_count = 0;
+        }
+    }
+
+    if !group.is_empty()
+        && let Some(last) = words.last()
+    {
+        let end = format_timestamp(last.end_ms);
+        output.push_str(&format!(
+            "{caption_index}\n{start} --> {end}\n{}\n\n",
+            group.join(" ")
+        ));
+    }
+
+    output
 }
 
 pub fn get_live_transcript_object_key(owner_id: &str, video_id: &str) -> String {
@@ -291,18 +506,43 @@ pub fn create_empty_live_transcript(now_iso: &str) -> LiveTranscriptArtifact {
         last_audio_segment_index: LIVE_TRANSCRIPT_NO_SEGMENTS,
         transcribed_duration_ms: 0,
         words: Vec::new(),
-        vtt: String::new(),
+        vtt: render_caption_vtt(&[]),
         updated_at: now_iso.to_string(),
         has_gaps: false,
+        revision: 0,
     }
 }
 
 pub fn parse_live_transcript(value: &str) -> Option<LiveTranscriptArtifact> {
-    let artifact: LiveTranscriptArtifact = serde_json::from_str(value).ok()?;
-    if artifact.version != LIVE_TRANSCRIPT_VERSION {
+    let raw: RawArtifact = serde_json::from_str(value).ok()?;
+    if raw.version != LIVE_TRANSCRIPT_VERSION {
         return None;
     }
-    Some(artifact)
+
+    let state = match raw.state.as_ref().and_then(serde_json::Value::as_str) {
+        Some("complete") => LiveTranscriptState::Complete,
+        Some("stopped") => LiveTranscriptState::Stopped,
+        _ => LiveTranscriptState::Active,
+    };
+
+    Some(LiveTranscriptArtifact {
+        version: raw.version,
+        state,
+        language_code: raw
+            .language_code
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        last_audio_segment_index: raw
+            .last_audio_segment_index
+            .map_or(LIVE_TRANSCRIPT_NO_SEGMENTS, |value| value as i64),
+        transcribed_duration_ms: raw.transcribed_duration_ms.unwrap_or(0.0) as i64,
+        words: raw.words.iter().filter_map(word_from_value).collect(),
+        vtt: raw.vtt.unwrap_or_default(),
+        updated_at: raw.updated_at.unwrap_or_default(),
+        has_gaps: raw.has_gaps,
+        revision: raw.revision,
+    })
 }
 
 pub struct ChunkResult {
@@ -340,8 +580,10 @@ pub fn apply_chunk_to_live_transcript(
         transcribed_duration_ms: artifact
             .transcribed_duration_ms
             .max(chunk.start_ms + chunk.duration_ms),
+        vtt: render_caption_vtt(&words),
         words,
         updated_at: chunk.now_iso,
+        revision: artifact.revision.saturating_add(1),
         ..artifact.clone()
     }
 }
@@ -412,11 +654,10 @@ pub struct EditTranscript {
 /// `parakeet-tdt-0.6b-v3-int8`) so quality regressions stay attributable.
 pub fn live_transcript_to_edit_transcript(
     artifact: &LiveTranscriptArtifact,
-    edit_transcript_version: u32,
     speech_model_used: &str,
 ) -> EditTranscript {
     EditTranscript {
-        version: edit_transcript_version,
+        version: EDIT_TRANSCRIPT_VERSION,
         speech_model_used: speech_model_used.to_string(),
         duration_ms: artifact.transcribed_duration_ms.max(0),
         language_code: artifact.language_code.clone(),

@@ -5,10 +5,11 @@
 //! underneath us.
 
 use cap_live_captions_core::{
-    ChunkDecision, ChunkResult, ChunkWordInput, LiveTranscriptState, MAX_CHUNK_TAKE_SECONDS,
-    PromotionVerdict, SegmentEntry, SegmentManifest, apply_chunk_to_live_transcript,
-    can_promote_live_transcript, create_empty_live_transcript, live_transcript_to_edit_transcript,
-    offset_chunk_words, parse_live_transcript, plan_next_live_chunk,
+    BARE_SEGMENT_DURATION_SECONDS, ChunkDecision, ChunkResult, ChunkWordInput, LiveTranscriptState,
+    MAX_CHUNK_TAKE_SECONDS, PromotionVerdict, SegmentEntry, SegmentManifest, TranscriptWord,
+    apply_chunk_to_live_transcript, can_promote_live_transcript, create_empty_live_transcript,
+    live_transcript_to_edit_transcript, offset_chunk_words, parse_live_transcript,
+    plan_next_live_chunk, render_caption_vtt,
 };
 
 fn seg(index: i64) -> SegmentEntry {
@@ -226,8 +227,204 @@ fn applies_chunks_idempotently() {
     assert_eq!(reapplied.language_code.as_deref(), Some("en"));
     assert_eq!(reapplied.state, LiveTranscriptState::Active);
 
+    // upstream asserts these three; dropping them is what let the unrendered
+    // vtt field ship empty
+    assert!(reapplied.vtt.starts_with("WEBVTT"));
+    assert!(reapplied.vtt.contains("First"));
+    assert!(reapplied.vtt.contains("second"));
+
     let json = serde_json::to_string(&reapplied).expect("serializes");
     assert_eq!(parse_live_transcript(&json), Some(reapplied));
+}
+
+#[test]
+fn vtt_breaks_cues_on_punctuation_gaps_and_eight_words() {
+    let word = |text: &str, start: i64, end: i64| TranscriptWord {
+        id: String::new(),
+        text: text.to_string(),
+        start_ms: start,
+        end_ms: end,
+        confidence: None,
+        speaker: None,
+        channel: None,
+    };
+
+    let vtt = render_caption_vtt(&[
+        word("Hello,", 0, 400),
+        word("world", 500, 900),
+        // >500ms gap forces a break after "world"
+        word("again", 2000, 2400),
+    ]);
+
+    assert!(vtt.starts_with("WEBVTT\n\n"));
+    assert!(vtt.contains("00:00:00.000 --> 00:00:00.400"));
+    assert!(vtt.contains("Hello,"));
+    assert!(vtt.contains("again"));
+    assert_eq!(vtt.matches(" --> ").count(), 3);
+}
+
+#[test]
+fn vtt_drops_filler_words_but_keeps_real_ones() {
+    let word = |text: &str| TranscriptWord {
+        id: String::new(),
+        text: text.to_string(),
+        start_ms: 0,
+        end_ms: 100,
+        confidence: None,
+        speaker: None,
+        channel: None,
+    };
+
+    let vtt = render_caption_vtt(&[word("um"), word("Ummm"), word("uh"), word("umbrella")]);
+
+    assert!(vtt.contains("umbrella"));
+    assert!(!vtt.contains("uh"));
+    assert_eq!(render_caption_vtt(&[]), "WEBVTT\n\n");
+}
+
+#[test]
+fn manifest_accepts_bare_number_segments_with_the_three_second_default() {
+    // Video.ts models an entry as Union(Number, Struct) and normalizeSegmentEntry
+    // gives a bare number a 3.0s duration. Rejecting the bare form failed the
+    // whole manifest, which is indistinguishable from "no manifest yet".
+    let m: SegmentManifest = serde_json::from_str(
+        r#"{"audio_segments":[0,1,2],"audio_init_uploaded":true,"is_complete":true}"#,
+    )
+    .expect("bare-number manifest parses");
+
+    assert_eq!(m.audio_segments.len(), 3);
+    assert_eq!(m.audio_segments[0].duration, BARE_SEGMENT_DURATION_SECONDS);
+
+    let (indices, start_ms, duration_ms) = chunk_parts(&plan(&m, -1, 15.0));
+    assert_eq!(indices, vec![0, 1, 2]);
+    assert_eq!(start_ms, 0);
+    assert_eq!(duration_ms, 9000);
+}
+
+#[test]
+fn manifest_tolerates_missing_optional_fields() {
+    let m: SegmentManifest =
+        serde_json::from_str(r#"{"audio_segments":[]}"#).expect("partial manifest parses");
+    assert!(m.audio_segments.is_empty());
+}
+
+#[test]
+fn parse_is_lenient_so_a_resume_never_discards_the_transcript() {
+    // Every one of these previously returned None, which resets the cursor to
+    // -1 and re-transcribes the recording from zero.
+    let cases = [
+        r#"{"version":1,"state":"paused","words":[]}"#,
+        r#"{"version":1,"state":"active","languageCode":123,"words":[]}"#,
+        r#"{"version":1,"state":"active","transcribedDurationMs":100.5,"words":[]}"#,
+        r#"{"version":1,"state":"active"}"#,
+    ];
+
+    for case in cases {
+        assert!(
+            parse_live_transcript(case).is_some(),
+            "should have parsed leniently: {case}"
+        );
+    }
+
+    // offsetChunkWords emits a NaN endMs when an engine reports a non-finite
+    // end, and JSON.stringify(NaN) writes null. One such word must not take
+    // the whole document with it.
+    let with_null_end = r#"{"version":1,"state":"active","words":[
+        {"id":"w0","text":"kept","startMs":100,"endMs":null}
+    ]}"#;
+    let parsed = parse_live_transcript(with_null_end).expect("parses");
+    assert_eq!(parsed.words.len(), 1);
+    assert_eq!(parsed.words[0].text, "kept");
+    assert_eq!(parsed.words[0].end_ms, 100);
+
+    // a wrong version is still a hard reject
+    assert_eq!(parse_live_transcript(r#"{"version":99}"#), None);
+}
+
+#[test]
+fn revision_increments_so_concurrent_writers_are_orderable() {
+    let empty = create_empty_live_transcript("2026-08-03T00:00:00.000Z");
+    assert_eq!(empty.revision, 0);
+
+    let chunk = || ChunkResult {
+        start_ms: 0,
+        duration_ms: 1000,
+        last_audio_segment_index: 0,
+        words: vec![],
+        language_code: None,
+        now_iso: "2026-08-03T00:00:01.000Z".into(),
+    };
+
+    let once = apply_chunk_to_live_transcript(&empty, chunk());
+    let twice = apply_chunk_to_live_transcript(&once, chunk());
+
+    assert_eq!(once.revision, 1);
+    assert_eq!(twice.revision, 2);
+}
+
+#[test]
+fn rejects_corrupt_segment_durations_rather_than_saturating() {
+    let huge = SegmentManifest {
+        audio_segments: vec![SegmentEntry {
+            index: 0,
+            duration: 1e300,
+        }],
+        audio_init_uploaded: true,
+        is_complete: true,
+    };
+
+    // previously produced duration_ms == i64::MAX
+    assert_eq!(plan(&huge, -1, 15.0), ChunkDecision::Wait);
+}
+
+#[test]
+fn duplicate_indices_keep_the_first_and_do_not_shift_the_timeline() {
+    let m = SegmentManifest {
+        audio_segments: vec![
+            SegmentEntry {
+                index: 0,
+                duration: 2.0,
+            },
+            SegmentEntry {
+                index: 0,
+                duration: 9.0,
+            },
+            SegmentEntry {
+                index: 1,
+                duration: 2.0,
+            },
+        ],
+        audio_init_uploaded: true,
+        is_complete: true,
+    };
+
+    let (indices, _, duration_ms) = chunk_parts(&plan(&m, -1, 1.0));
+    assert_eq!(indices, vec![0, 1]);
+    assert_eq!(duration_ms, 4000);
+}
+
+#[test]
+fn non_uniform_durations_do_not_drift_the_running_offset() {
+    let durations = [0.1_f64, 1.0 / 3.0, 2.7, 0.5, 1.9];
+    let m = SegmentManifest {
+        audio_segments: durations
+            .iter()
+            .enumerate()
+            .map(|(i, d)| SegmentEntry {
+                index: i as i64,
+                duration: *d,
+            })
+            .collect(),
+        audio_init_uploaded: true,
+        is_complete: true,
+    };
+
+    // consume the first three, then confirm the fourth starts where they ended
+    let expected_start = (durations[..3].iter().sum::<f64>() * 1000.0).round() as i64;
+    let (indices, start_ms, _) = chunk_parts(&plan(&m, 2, 0.1));
+
+    assert_eq!(indices, vec![3, 4]);
+    assert_eq!(start_ms, expected_start);
 }
 
 #[test]
@@ -359,8 +556,10 @@ fn shapes_accumulated_words_as_a_canonical_edit_transcript() {
         },
     );
 
-    let edit = live_transcript_to_edit_transcript(&artifact, 3, "parakeet-tdt-0.6b-v3-int8");
+    let edit = live_transcript_to_edit_transcript(&artifact, "parakeet-tdt-0.6b-v3-int8");
 
+    // hard-coded in the crate: an upstream bump must fail here, not silently
+    // write a stale version
     assert_eq!(edit.version, 3);
     assert_eq!(edit.speech_model_used, "parakeet-tdt-0.6b-v3-int8");
     assert_eq!(edit.duration_ms, 2500);
