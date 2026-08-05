@@ -1434,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "cap-desktop"
-version = "0.5.7"
+version = "0.5.8"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -1718,6 +1718,14 @@ dependencies = [
  "thiserror 1.0.69",
  "wgpu",
  "workspace-hack",
+]
+
+[[package]]
+name = "cap-live-captions-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
