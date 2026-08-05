@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Parakeet-in-browser spike</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+         max-width: 940px; margin: 2rem auto; padding: 0 1.25rem; }
+  h1 { font-size: 1.4rem; margin-bottom: .25rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  fieldset { border: 1px solid rgba(128,128,128,.35); border-radius: 8px;
+             padding: 1rem 1.15rem; margin: 1rem 0; }
+  legend { padding: 0 .4rem; font-weight: 600; }
+  button { font: inherit; padding: .5rem .9rem; border-radius: 6px;
+           border: 1px solid rgba(128,128,128,.45); background: transparent;
+           cursor: pointer; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  input[type=text] { font: inherit; padding: .4rem .55rem; width: 24rem;
+                     border-radius: 6px; border: 1px solid rgba(128,128,128,.45);
+                     background: transparent; color: inherit; }
+  #log { white-space: pre-wrap; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: rgba(128,128,128,.10); padding: .85rem; border-radius: 8px;
+         max-height: 20rem; overflow: auto; }
+  table { border-collapse: collapse; margin-top: .6rem; }
+  td { padding: .18rem .9rem .18rem 0; }
+  td:first-child { opacity: .7; }
+  .num { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  #transcript { white-space: pre-wrap; padding: .85rem; border-radius: 8px;
+                background: rgba(128,128,128,.10); min-height: 3rem; }
+  .warn { color: #b45309; }
+  .bad { color: #b91c1c; }
+  .good { color: #15803d; }
+</style>
+</head>
+<body>
+
+<h1>Parakeet in the browser — feasibility spike</h1>
+<p class="sub">
+  Answers one question: is on-device transcription in Chrome fast and accurate
+  enough to skip forking Cap's desktop app? Nothing here touches the Cap fork.
+</p>
+
+<fieldset>
+  <legend>1 · Environment</legend>
+  <div id="env" class="num">checking…</div>
+</fieldset>
+
+<fieldset>
+  <legend>2 · Model</legend>
+  <p style="margin-top:0">
+    HF repo:
+    <input type="text" id="repo" value="istupakov/parakeet-tdt-0.6b-v3-onnx">
+    <br><small class="sub">First load downloads ~600MB and caches it. Subsequent loads are fast.</small>
+  </p>
+  <button id="load">Load model</button>
+  <span id="loadStatus"></span>
+</fieldset>
+
+<fieldset>
+  <legend>3 · Audio</legend>
+  <button id="rec" disabled>● Record mic</button>
+  <button id="stop" disabled>■ Stop</button>
+  <span class="sub">or</span>
+  <input type="file" id="file" accept="audio/*,video/*" disabled>
+  <p class="sub" style="margin-bottom:0">
+    Speak the way you actually record — jargon, client names, your normal pace.
+    Accuracy on <em>your</em> speech is the thing being tested.
+  </p>
+</fieldset>
+
+<fieldset>
+  <legend>4 · Result</legend>
+  <table>
+    <tr><td>backend</td><td id="mBackend" class="num">—</td></tr>
+    <tr><td>audio duration</td><td id="mAudio" class="num">—</td></tr>
+    <tr><td>model load</td><td id="mLoad" class="num">—</td></tr>
+    <tr><td>transcribe time</td><td id="mTime" class="num">—</td></tr>
+    <tr><td>realtime factor</td><td id="mRtf" class="num">—</td></tr>
+    <tr><td>words w/ timestamps</td><td id="mWords" class="num">—</td></tr>
+  </table>
+  <p style="margin-bottom:.35rem"><strong>Transcript</strong></p>
+  <div id="transcript">—</div>
+</fieldset>
+
+<fieldset>
+  <legend>Log</legend>
+  <div id="log"></div>
+</fieldset>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const log = (msg, cls = "") => {
+  const at = new Date().toISOString().slice(11, 19);
+  $("log").innerHTML += `<span class="${cls}">[${at}] ${msg}</span>\n`;
+  $("log").scrollTop = $("log").scrollHeight;
+};
+
+// Multithreaded WASM is gated on cross-origin isolation. Without it ORT falls
+// back to single-threaded, which is the difference between "usable" and "no".
+const env = [];
+env.push(`crossOriginIsolated: ${crossOriginIsolated}`);
+env.push(`WebGPU: ${"gpu" in navigator ? "available" : "MISSING"}`);
+env.push(`hardwareConcurrency: ${navigator.hardwareConcurrency}`);
+$("env").textContent = env.join("\n");
+if (!crossOriginIsolated) log("crossOriginIsolated is false — serve via serve.py, not file://", "warn");
+if (!("gpu" in navigator)) log("No WebGPU. It will fall back to WASM and be far slower.", "warn");
+
+let model = null;
+let loadMs = 0;
+
+$("load").onclick = async () => {
+  $("load").disabled = true;
+  $("loadStatus").textContent = " downloading…";
+  try {
+    log("importing parakeet.js from esm.sh…");
+    const { fromHub } = await import("https://esm.sh/parakeet.js");
+    const repo = $("repo").value.trim();
+    const backend = "gpu" in navigator ? "webgpu" : "wasm";
+    log(`loading ${repo} (backend=${backend}) — this is the ~600MB download`);
+    const t0 = performance.now();
+    model = await fromHub(repo, { backend, encoderQuant: "fp32", decoderQuant: "int8" });
+    loadMs = performance.now() - t0;
+    $("mBackend").textContent = backend;
+    $("mLoad").textContent = `${(loadMs / 1000).toFixed(1)}s`;
+    $("loadStatus").textContent = " ✅ ready";
+    log(`model ready in ${(loadMs / 1000).toFixed(1)}s`, "good");
+    $("rec").disabled = false;
+    $("file").disabled = false;
+  } catch (err) {
+    $("loadStatus").textContent = " ❌ failed";
+    log(`model load failed: ${err}`, "bad");
+    log("If this is a 404, the HF repo id is wrong — try another in the field above.", "warn");
+    $("load").disabled = false;
+  }
+};
+
+// parakeet.js wants mono Float32 @ 16k. Decoding into a 16k context does the
+// resample for us rather than hand-rolling one.
+async function toPcm16k(blob) {
+  const buf = await blob.arrayBuffer();
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const decoded = await ctx.decodeAudioData(buf);
+  await ctx.close();
+  return { pcm: decoded.getChannelData(0), seconds: decoded.duration };
+}
+
+async function run(blob) {
+  try {
+    $("transcript").textContent = "transcribing…";
+    const { pcm, seconds } = await toPcm16k(blob);
+    $("mAudio").textContent = `${seconds.toFixed(1)}s`;
+    log(`decoded ${seconds.toFixed(1)}s of audio at 16kHz mono`);
+
+    const t0 = performance.now();
+    const result = await model.transcribe(pcm, 16000, {
+      returnTimestamps: true,
+      returnConfidences: true,
+    });
+    const ms = performance.now() - t0;
+
+    const rtf = seconds > 0 ? ms / 1000 / seconds : 0;
+    $("mTime").textContent = `${(ms / 1000).toFixed(1)}s`;
+    $("mRtf").textContent = `${rtf.toFixed(2)}× (lower is better; <1 beats realtime)`;
+    $("mWords").textContent = String(result.words?.length ?? 0);
+    $("transcript").textContent = result.utterance_text || "(empty)";
+
+    log(`transcribed in ${(ms / 1000).toFixed(1)}s — RTF ${rtf.toFixed(2)}`, rtf < 1 ? "good" : "warn");
+    if (result.words?.length) {
+      const sample = result.words.slice(0, 5)
+        .map((w) => `${w.word ?? w.text}@${(w.start ?? 0).toFixed?.(2) ?? w.start}`).join("  ");
+      log(`first words: ${sample}`);
+    } else {
+      log("no word timestamps returned — Cap's transcript format needs these", "warn");
+    }
+  } catch (err) {
+    $("transcript").textContent = "(failed)";
+    log(`transcription failed: ${err}`, "bad");
+  }
+}
+
+let recorder = null;
+$("rec").onclick = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = (e) => chunks.push(e.data);
+  recorder.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    await run(new Blob(chunks, { type: recorder.mimeType }));
+    $("rec").disabled = false;
+    $("stop").disabled = true;
+  };
+  recorder.start();
+  log("recording…");
+  $("rec").disabled = true;
+  $("stop").disabled = false;
+};
+
+$("stop").onclick = () => recorder?.stop();
+$("file").onchange = (e) => { if (e.target.files[0]) run(e.target.files[0]); };
+</script>
+</body>
+</html>
