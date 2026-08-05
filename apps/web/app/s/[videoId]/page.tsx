@@ -61,6 +61,7 @@ import {
 	SOCIAL_REFERRER_DOMAINS,
 } from "@/lib/social-crawlers";
 import { transcribeVideo } from "@/lib/transcribe";
+import { transcriptionEnabled } from "@/lib/transcription-config";
 import { canUserDownloadVideo } from "@/lib/video-download-permissions";
 import {
 	isEditSourceKey,
@@ -496,7 +497,7 @@ async function AuthorizedContent({
 	const env = serverEnv();
 	const transcriptionGenerationAvailable =
 		!video.isScreenshot &&
-		Boolean(env.ASSEMBLY_API_KEY) &&
+		transcriptionEnabled() &&
 		!rules.settings.disableTranscript;
 	const aiProviderAvailable = Boolean(env.GROQ_API_KEY || env.OPENAI_API_KEY);
 

@@ -1,9 +1,9 @@
 import { db } from "@cap/database";
 import { organizations, videos, videoUploads } from "@cap/database/schema";
-import { serverEnv } from "@cap/env";
 import type { Video } from "@cap/web-domain";
 import { and, eq, isNull } from "drizzle-orm";
 import { start } from "workflow/api";
+import { transcriptionEnabled } from "@/lib/transcription-config";
 import { transcribeVideoWorkflow } from "@/workflows/transcribe";
 
 type TranscribeResult = {
@@ -46,7 +46,7 @@ export async function transcribeVideo(
 	aiGenerationEnabled = false,
 	options: TranscribeVideoOptions = {},
 ): Promise<TranscribeResult> {
-	if (!serverEnv().ASSEMBLY_API_KEY) {
+	if (!transcriptionEnabled()) {
 		return {
 			success: false,
 			message: "Missing necessary environment variables",

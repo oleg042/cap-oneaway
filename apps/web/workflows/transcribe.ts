@@ -30,6 +30,10 @@ import {
 } from "@/lib/audio-enhance";
 import { checkHasAudioTrack, extractAudioFromUrl } from "@/lib/audio-extract";
 import {
+	transcribeEditTranscriptWithCloudflare,
+	transcribeWithCloudflare,
+} from "@/lib/cloudflare-transcribe";
+import {
 	createEditTranscript,
 	editTranscriptWordsToCaptionVtt,
 	getEditTranscriptBackfillStatus,
@@ -47,6 +51,10 @@ import {
 } from "@/lib/media-client";
 import { planSegmentsAudioExtraction } from "@/lib/segments-audio";
 import { downloadConcatenatedSegments } from "@/lib/segments-audio-download";
+import {
+	getTranscriptionProvider,
+	transcriptionEnabled,
+} from "@/lib/transcription-config";
 import { decodeStorageVideo } from "@/lib/video-storage";
 import { runWorkflowPromise } from "@/lib/workflow-runtime";
 
@@ -240,8 +248,8 @@ export async function backfillEditTranscriptWorkflow(
 async function validateVideo(videoId: string): Promise<VideoData> {
 	"use step";
 
-	if (!serverEnv().ASSEMBLY_API_KEY) {
-		throw new FatalError("Missing ASSEMBLY_API_KEY");
+	if (!transcriptionEnabled()) {
+		throw new FatalError("Transcription is not configured");
 	}
 
 	const query = await db()
@@ -315,8 +323,8 @@ async function validateEditTranscriptBackfill(
 ) {
 	"use step";
 
-	if (!serverEnv().ASSEMBLY_API_KEY) {
-		throw new FatalError("Missing ASSEMBLY_API_KEY");
+	if (!transcriptionEnabled()) {
+		throw new FatalError("Transcription is not configured");
 	}
 
 	const [video] = await db()
@@ -759,6 +767,10 @@ async function transcribeWithAssemblyAI(
 ): Promise<TranscriptionArtifacts> {
 	"use step";
 
+	if (getTranscriptionProvider() === "cloudflare") {
+		return transcribeWithCloudflare(audioUrl, language, videoDurationMs);
+	}
+
 	const audioResponse = await fetch(audioUrl);
 	if (!audioResponse.ok) {
 		throw new Error(
@@ -806,6 +818,13 @@ async function transcribeEditTranscriptWithAssemblyAI(
 	videoDurationSeconds: number,
 ): Promise<string> {
 	"use step";
+
+	if (getTranscriptionProvider() === "cloudflare") {
+		return transcribeEditTranscriptWithCloudflare(
+			audioUrl,
+			videoDurationSeconds,
+		);
+	}
 
 	const audioResponse = await fetch(audioUrl);
 	if (!audioResponse.ok) {

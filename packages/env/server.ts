@@ -90,6 +90,20 @@ function createServerEnv() {
 
 			/// AI providers
 			ASSEMBLY_API_KEY: z.string().optional().describe("Audio transcription"),
+			CLOUDFLARE_ACCOUNT_ID: z
+				.string()
+				.optional()
+				.describe("Cloudflare account for Workers AI transcription"),
+			CLOUDFLARE_AI_TOKEN: z
+				.string()
+				.optional()
+				.describe("Cloudflare Workers AI API token (transcription)"),
+			CLOUDFLARE_AI_MODEL: z
+				.string()
+				.optional()
+				.describe(
+					"Workers AI ASR model (default @cf/openai/whisper-large-v3-turbo)",
+				),
 			ANTHROPIC_API_KEY: z.string().optional().describe("AI chat"),
 			OPENAI_API_KEY: z.string().optional().describe("AI summaries"),
 			GROQ_API_KEY: z.string().optional().describe("AI summaries"),
