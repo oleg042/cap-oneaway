@@ -104,15 +104,56 @@ S3_PUBLIC_ENDPOINT, S3_INTERNAL_ENDPOINT, S3_PATH_STYLE=false
 moving ASR on-device (Parakeet v3 / whisper.cpp, both already vendored in the
 desktop app).
 
-## Desktop app
+## Recording: two clients, very different costs
+
+### Chrome extension — no Xcode, no signing, no fork
+
+Cap ships a Chrome extension that records screen, window, tab, camera and mic,
+uploading while it records. Its manifest requests `http://*/*` and `https://*/*`,
+so it talks to a self-hosted instance with no repackaging, and the server
+address is a normal setting rather than a build-time constant.
+
+```bash
+export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
+pnpm --filter @cap/chrome-extension build     # → apps/chrome-extension/dist
+```
+
+Then, per teammate: `chrome://extensions` → enable **Developer mode** → **Load
+unpacked** → select `apps/chrome-extension/dist` → open the extension's
+**Options** → set the server URL to the instance (`http://localhost:3900`, later
+`https://video.oneaway.io`).
+
+This path avoids the entire desktop toolchain: no Xcode, no Apple Developer
+account, no notarization, no Windows certificate, no auto-update channel, and
+no per-seat commercial licence. For distribution beyond a handful of people,
+publish it as an unlisted Chrome Web Store item instead of asking everyone to
+load it unpacked.
+
+What it cannot do: run a local ASR model. The extension path implies cloud
+transcription.
+
+### Desktop app — only needed for on-device transcription
 
 ```bash
 pnpm cap-setup        # native deps (ffmpeg) — slow first run
 pnpm dev:desktop      # builds sidecar binaries, then tauri dev
 ```
 
-Point the app at this instance via **Settings → Cap Server URL** →
-`http://localhost:3900`.
+Point it at the instance via **Settings → Cap Server URL**.
+
+Requires **full Xcode**, not just Command Line Tools — `cidre` shells out to
+`xcodebuild`, and the failure message never mentions Xcode:
+
+```
+xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer
+directory '/Library/Developer/CommandLineTools' is a command line tools instance
+```
+
+Fix with `sudo xcode-select -s /Applications/Xcode.app`.
+
+Note that Cap's official signed binary already accepts a custom server URL, so
+building the desktop app from source is only worth it if we are *modifying* it —
+which, for us, means on-device transcription and nothing else.
 
 ## Staying current with upstream
 
