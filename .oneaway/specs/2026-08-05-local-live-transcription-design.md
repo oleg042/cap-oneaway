@@ -109,7 +109,29 @@ recording stops                               │
                                      (already implemented upstream)
 ```
 
-### 5.3 Containing upstream drift
+### 5.3 Robustness we inherit rather than build
+
+Reading the pure core in full surfaced three safety mechanisms that come free:
+
+- **Idempotent chunk merge.** `applyChunkToLiveTranscript` evicts any words at
+  or after the incoming chunk's start before appending, so a retried chunk
+  cannot duplicate words.
+- **Gap-aware promotion.** `canPromoteLiveTranscript` refuses to promote a live
+  transcript to canonical unless the manifest is complete, has no index gap, and
+  is covered through its last segment. A skipped chunk sets `hasGaps` and
+  disqualifies the artifact — the full-pass fallback covers the recording
+  instead. Locally that fallback is "transcribe the whole file on-device after
+  stop," which we get by reusing the existing editor path.
+- **Model provenance.** `liveTranscriptToEditTranscript(artifact,
+  speechModelUsed)` records which model produced a transcript. We set it to the
+  concrete local model (e.g. `parakeet-tdt-0.6b-v3-int8`), which makes quality
+  regressions attributable after the fact.
+
+One function does *not* port: `isNoSpokenAudioError` exists because AssemblyAI
+reports silence as a transcript error. Local engines simply return no words for
+a silent chunk, so the empty-chunk case needs no special handling.
+
+### 5.4 Containing upstream drift
 
 We will be rebasing on an actively-developed upstream — Cap shipped live
 transcription on 2026-08-03, three days before this spec. Merge cost is a
@@ -143,15 +165,22 @@ outside Parakeet's European set (CJK, Arabic, Hindi).
 Both paths already converge on `CaptionData`, so the orchestrator is
 engine-agnostic and this decision costs nothing to reverse.
 
-### 6.2 Language is pinned per recording, not auto-detected per chunk
+### 6.2 Language is pinned per recording — and upstream already does this
 
 Parakeet auto-detects language, but chunks are 5–10 seconds. Detection on a
 short chunk of hesitation ("okay, so…") is unreliable and would let language
 flap mid-recording, corrupting the transcript.
 
-Resolution: detect once on the first chunk containing speech, then pin for the
-remainder of the recording. A user-set language in settings overrides detection
-entirely.
+Upstream already solves it. `applyChunkToLiveTranscript` merges with:
+
+```ts
+languageCode: artifact.languageCode ?? chunk.languageCode
+```
+
+First non-null wins and no later chunk can overwrite it, and `languageCode` is
+already a field on `LiveTranscriptArtifact`. So this is **inherited behaviour we
+must preserve in the port**, not new work. A user-set language in settings still
+overrides detection entirely.
 
 ### 6.3 Storage: MinIO locally, R2 in production
 
