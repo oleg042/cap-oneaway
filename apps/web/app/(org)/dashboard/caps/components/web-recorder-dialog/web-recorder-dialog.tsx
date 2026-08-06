@@ -12,6 +12,7 @@ import { MonitorIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDashboardContext } from "../../../Contexts";
+import { CameraBubbleControls } from "./CameraBubbleControls";
 import {
 	CameraPreviewWindow,
 	type CameraPreviewWindowHandle,
@@ -168,6 +169,11 @@ export const WebRecorderDialog = () => {
 		restartRecording,
 		resetState,
 		dismissRecoveredDownload,
+		cameraBubble,
+		setCameraCorner,
+		setCameraNormalizedPosition,
+		toggleCameraMirror,
+		recordingAspect,
 	} = useWebRecorder({
 		organisationId,
 		selectedMicId,
@@ -260,9 +266,13 @@ export const WebRecorderDialog = () => {
 	};
 
 	const showInProgressBar = isRecording || isBusy || phase === "error";
+	// Screen+camera now bakes the webcam into the recording via the canvas compositor, so the old floating
+	// preview window (which got PiP-captured) must NOT mount for screen modes — otherwise a second camera
+	// would be filmed. Keep it ONLY for camera-only recordings (where the camera IS the whole frame).
 	const showCameraPreview =
-		selectedCameraId &&
-		(recordingMode !== "camera" || (!isSettingUp && !isBusy));
+		selectedCameraId && recordingMode === "camera" && !isSettingUp && !isBusy;
+	const hasCameraBubble =
+		recordingMode !== "camera" && Boolean(selectedCameraId);
 	const recordingTimerDisplayMs = user.isPro
 		? durationMs
 		: Math.max(0, FREE_PLAN_MAX_RECORDING_MS - durationMs);
@@ -351,6 +361,16 @@ export const WebRecorderDialog = () => {
 									onMicChange={handleMicChange}
 									onRefreshDevices={refreshMics}
 								/>
+								{hasCameraBubble && !isRecording && (
+									<CameraBubbleControls
+										position={cameraBubble.position}
+										mirror={cameraBubble.mirror}
+										aspect={16 / 9}
+										onCorner={setCameraCorner}
+										onNormalized={setCameraNormalizedPosition}
+										onToggleMirror={toggleCameraMirror}
+									/>
+								)}
 								{recordingMode !== "camera" && (
 									<SystemAudioToggle
 										enabled={systemAudioEnabled}
@@ -454,6 +474,12 @@ export const WebRecorderDialog = () => {
 					onResume={resumeRecording}
 					onRestart={restartRecording}
 					isRestarting={isRestarting}
+					hasCameraBubble={hasCameraBubble}
+					cameraBubble={cameraBubble}
+					cameraAspect={recordingAspect}
+					onCameraCorner={setCameraCorner}
+					onCameraNormalized={setCameraNormalizedPosition}
+					onCameraMirror={toggleCameraMirror}
 				/>
 			)}
 			{showCameraPreview && (

@@ -125,7 +125,13 @@ export const useMediaRecorderSetup = () => {
 	const stopRecordingInternal = useCallback(
 		async (cleanupStreams: () => void, clearTimer: () => void) => {
 			const recorder = mediaRecorderRef.current;
-			if (!recorder || recorder.state === "inactive") return null;
+			if (!recorder || recorder.state === "inactive") {
+				// Recorder already stopped/errored to inactive: still release streams so the compositor is
+				// torn down and the camera light turns off (the active path stops them right after stop()).
+				cleanupStreams();
+				clearTimer();
+				return null;
+			}
 			if (isStoppingRef.current) return null;
 
 			isStoppingRef.current = true;
