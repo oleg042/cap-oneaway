@@ -48,6 +48,7 @@ import {
 	clamp as clampBubble,
 	createCameraCompositor,
 	isCompositorSupported,
+	nextCorner,
 } from "./cameraCompositor";
 import type { RecordingMode } from "./RecordingModeSelector";
 import {
@@ -86,6 +87,11 @@ interface UseWebRecorderOptions {
 	onRecordingSurfaceDetected?: (mode: RecordingMode) => void;
 	onRecordingStart?: () => void;
 	onRecordingStop?: () => void;
+	// Embed mode (portal iframe): suppress Cap's own post-record navigation (opening the /s/ share page in
+	// a new tab + router.refresh(), which re-renders the dashboard with full chrome — the "weird screen")
+	// and instead hand the result back to the portal so it can close the modal and return to the board.
+	embed?: boolean;
+	onRecorded?: (info: { videoId: string; shareUrl: string }) => void;
 }
 
 const INSTANT_UPLOAD_REQUEST_INTERVAL_MS = 1000;
@@ -208,6 +214,8 @@ export const useWebRecorder = ({
 	onRecordingSurfaceDetected,
 	onRecordingStart,
 	onRecordingStop,
+	embed,
+	onRecorded,
 }: UseWebRecorderOptions) => {
 	const [phase, setPhase] = useState<RecorderPhase>("idle");
 	const [videoId, setVideoId] = useState<VideoId | null>(null);
@@ -309,7 +317,7 @@ export const useWebRecorder = ({
 	// setters write the ref synchronously so a mid-recording move applies on the very next frame (before
 	// React commits), which is what makes the bubble movable while recording.
 	const [cameraBubble, setCameraBubble] = useState<BubbleConfig>({
-		position: { mode: "corner", corner: "br" },
+		position: { mode: "corner", corner: "bl" },
 		mirror: false,
 	});
 	const cameraBubbleRef = useRef<BubbleConfig>(cameraBubble);
@@ -341,9 +349,24 @@ export const useWebRecorder = ({
 		cameraBubbleRef.current = next;
 		setCameraBubble(next);
 	}, []);
+	// Arrow keys hop the bubble corner-to-corner (Left/Right set the horizontal corner, Up/Down the
+	// vertical), keeping the other axis. Used by the drag pad (when focused) and a global listener while
+	// the recorder window has focus during recording. Returns true if the key was an arrow (handled).
+	const arrowCameraCorner = useCallback(
+		(key: string) => {
+			const c = nextCorner(cameraBubbleRef.current.position, key);
+			if (c) setCameraCorner(c);
+			return c !== null;
+		},
+		[setCameraCorner],
+	);
 	// Aspect ratio of the actual recording surface, published once the screen stream is acquired so the
 	// mid-record bubble control's drag pad matches the real frame (pre-record it stays 16:9).
 	const [recordingAspect, setRecordingAspect] = useState(16 / 9);
+	// The live camera stream while a bubble is active, surfaced so the UI can show a self-view (so the user
+	// sees their face + where the bubble sits) during setup and recording. Same stream the compositor reads.
+	const [cameraPreviewStream, setCameraPreviewStream] =
+		useState<MediaStream | null>(null);
 	// Set true by any teardown that runs while startRecording is mid-flight (unmount/reset/error), so the
 	// compositor built just after an `await` can be destroyed instead of leaking an unstoppable frame loop.
 	const compositorAbortRef = useRef(false);
@@ -723,6 +746,7 @@ export const useWebRecorder = ({
 	const cleanupRecordingState = useCallback(async () => {
 		// Signal any in-flight startRecording (awaiting camera/compositor) to abort + self-destroy.
 		compositorAbortRef.current = true;
+		setCameraPreviewStream(null);
 		cleanupStreams();
 		clearTimer();
 		resetRecorder();
@@ -1066,6 +1090,7 @@ export const useWebRecorder = ({
 						),
 					]);
 					cameraStreamRef.current = camStream; // cleanupStreams stops this source stream
+					setCameraPreviewStream(camStream);
 					const compFps = Math.min(dimensionsRef.current.fps ?? 30, 30);
 					const controller = await createCameraCompositor({
 						screenStream: videoStream,
@@ -1118,6 +1143,7 @@ export const useWebRecorder = ({
 					});
 					cameraStreamRef.current = null;
 					cameraCompositorRef.current = null;
+					setCameraPreviewStream(null);
 					recordingVideoTracks = videoStream.getVideoTracks();
 				}
 			}
@@ -1692,8 +1718,17 @@ export const useWebRecorder = ({
 					? "Recording uploaded. Processing will continue shortly."
 					: "Recording uploaded.",
 			);
-			openShareUrl(creationResult.shareUrl);
-			router.refresh();
+			if (embed) {
+				// Hand the tape back to the portal (it closes the modal + refreshes the board). Do NOT open
+				// Cap's share page or router.refresh() — the latter re-renders the dashboard with full chrome.
+				onRecorded?.({
+					videoId: String(creationResult.id),
+					shareUrl: creationResult.shareUrl,
+				});
+			} else {
+				openShareUrl(creationResult.shareUrl);
+				router.refresh();
+			}
 		} catch (err) {
 			console.error("Failed to process recording", err);
 			setUploadStatus(undefined);
@@ -1708,7 +1743,7 @@ export const useWebRecorder = ({
 				toast.error(
 					"Upload confirmation was interrupted. Open the video to verify processing before retrying.",
 				);
-				openShareUrl(videoCreationRef.current?.shareUrl ?? null);
+				if (!embed) openShareUrl(videoCreationRef.current?.shareUrl ?? null);
 				setCompletedShareUrl(videoCreationRef.current?.shareUrl ?? null);
 				router.refresh();
 				return;
@@ -1752,6 +1787,8 @@ export const useWebRecorder = ({
 		resolveFailureBlob,
 		disposeRecordingSpool,
 		clearInstantChunkGuard,
+		embed,
+		onRecorded,
 	]);
 
 	useEffect(() => {
@@ -1868,6 +1905,8 @@ export const useWebRecorder = ({
 		setCameraCorner,
 		setCameraNormalizedPosition,
 		toggleCameraMirror,
+		arrowCameraCorner,
 		recordingAspect,
+		cameraPreviewStream,
 	};
 };

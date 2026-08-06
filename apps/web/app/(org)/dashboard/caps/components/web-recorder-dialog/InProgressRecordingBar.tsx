@@ -67,6 +67,7 @@ interface InProgressRecordingBarProps {
 	hasCameraBubble?: boolean;
 	cameraBubble?: BubbleConfig;
 	cameraAspect?: number;
+	cameraPreviewStream?: MediaStream | null;
 	onCameraCorner?: (corner: BubbleCorner) => void;
 	onCameraNormalized?: (nx: number, ny: number) => void;
 	onCameraMirror?: () => void;
@@ -88,6 +89,7 @@ export const InProgressRecordingBar = ({
 	hasCameraBubble = false,
 	cameraBubble,
 	cameraAspect,
+	cameraPreviewStream,
 	onCameraCorner,
 	onCameraNormalized,
 	onCameraMirror,
@@ -369,6 +371,7 @@ export const InProgressRecordingBar = ({
 											aspect={
 												cameraAspect && cameraAspect > 0 ? cameraAspect : 16 / 9
 											}
+											previewStream={cameraPreviewStream}
 											onCorner={(c) => onCameraCorner?.(c)}
 											onNormalized={(nx, ny) => onCameraNormalized?.(nx, ny)}
 											onToggleMirror={() => onCameraMirror?.()}

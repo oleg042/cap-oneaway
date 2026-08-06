@@ -14,6 +14,7 @@ import {
 	type BubbleCorner,
 	type BubblePosition,
 	computeBubbleMetrics,
+	nextCorner,
 	normalizedFromPoint,
 	PREVIEW_GEOM,
 	resolveBubbleCenter,
@@ -140,10 +141,21 @@ export const CameraBubbleControls = ({
 
 			<div
 				ref={padRef}
-				className="relative w-full overflow-hidden rounded-xl border border-gray-5 bg-gray-1 select-none touch-none"
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: custom pointer + arrow-key positioning control
+				tabIndex={0}
+				role="application"
+				aria-label="Camera bubble position — drag, or use arrow keys to hop between corners"
+				className="relative w-full overflow-hidden rounded-xl border border-gray-5 bg-gray-1 select-none touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-8"
 				style={{
 					aspectRatio: String(aspect),
 					cursor: dragging ? "grabbing" : "crosshair",
+				}}
+				onKeyDown={(e) => {
+					const c = nextCorner(position, e.key);
+					if (c) {
+						e.preventDefault();
+						onCorner(c);
+					}
 				}}
 				onPointerDown={(e) => {
 					if ((e.target as HTMLElement).closest("[data-corner-btn]")) return;
@@ -218,7 +230,7 @@ export const CameraBubbleControls = ({
 				))}
 			</div>
 			<span className="text-[10px] leading-snug text-gray-10">
-				Drag the circle or tap a corner. You can move it while recording.
+				Drag, tap a corner, or use arrow keys. You can move it while recording.
 			</span>
 		</div>
 	);

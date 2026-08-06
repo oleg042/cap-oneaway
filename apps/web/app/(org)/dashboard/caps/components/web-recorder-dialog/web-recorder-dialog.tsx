@@ -56,7 +56,13 @@ const waitForNextFrame = () =>
 		window.requestAnimationFrame(() => resolve());
 	});
 
-export const WebRecorderDialog = () => {
+export const WebRecorderDialog = ({
+	embed,
+	onRecorded,
+}: {
+	embed?: boolean;
+	onRecorded?: (info: { videoId: string; shareUrl: string }) => void;
+} = {}) => {
 	const [open, setOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [howItWorksOpen, setHowItWorksOpen] = useState(false);
@@ -173,7 +179,9 @@ export const WebRecorderDialog = () => {
 		setCameraCorner,
 		setCameraNormalizedPosition,
 		toggleCameraMirror,
+		arrowCameraCorner,
 		recordingAspect,
+		cameraPreviewStream,
 	} = useWebRecorder({
 		organisationId,
 		selectedMicId,
@@ -187,7 +195,52 @@ export const WebRecorderDialog = () => {
 		},
 		onRecordingStart: handleRecordingStartSound,
 		onRecordingStop: handleRecordingStopSound,
+		embed,
+		onRecorded,
 	});
+
+	// Live self-view for the bubble control BEFORE recording (screen modes with a camera). The compositor
+	// only opens the camera at record start, so open a lightweight preview here so the user sees their face
+	// and where the bubble will sit. Stopped when recording begins (handleStartClick), on camera change, or
+	// on close — so the compositor can claim the device cleanly.
+	const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+	useEffect(() => {
+		if (
+			!open ||
+			recordingMode === "camera" ||
+			!selectedCameraId ||
+			isRecording ||
+			isBusy
+		) {
+			setPreviewStream(null);
+			return;
+		}
+		let stream: MediaStream | null = null;
+		let cancelled = false;
+		navigator.mediaDevices
+			.getUserMedia({ video: { deviceId: { exact: selectedCameraId } } })
+			.then((s) => {
+				if (cancelled) {
+					s.getTracks().forEach((t) => {
+						t.stop();
+					});
+					return;
+				}
+				stream = s;
+				setPreviewStream(s);
+			})
+			.catch(() => {
+				/* preview is best-effort; the pad still shows a placeholder */
+			});
+		return () => {
+			cancelled = true;
+			if (stream)
+				stream.getTracks().forEach((t) => {
+					t.stop();
+				});
+			setPreviewStream(null);
+		};
+	}, [open, recordingMode, selectedCameraId, isRecording, isBusy]);
 
 	useEffect(() => {
 		if (
@@ -244,10 +297,17 @@ export const WebRecorderDialog = () => {
 		if (recordingMode === "camera") {
 			cameraPreviewRef.current?.stopStream();
 			await waitForNextFrame();
+		} else if (previewStream) {
+			// Release the pre-record self-view so the compositor's getUserMedia claims the camera cleanly.
+			previewStream.getTracks().forEach((t) => {
+				t.stop();
+			});
+			setPreviewStream(null);
+			await waitForNextFrame();
 		}
 
 		await startRecording();
-	}, [recordingMode, startRecording]);
+	}, [recordingMode, startRecording, previewStream]);
 
 	const handleClose = () => {
 		if (!isBusy) {
@@ -273,6 +333,24 @@ export const WebRecorderDialog = () => {
 		selectedCameraId && recordingMode === "camera" && !isSettingUp && !isBusy;
 	const hasCameraBubble =
 		recordingMode !== "camera" && Boolean(selectedCameraId);
+	// Arrow keys hop the bubble corner-to-corner globally while recording — but only when the recorder
+	// window has focus (recording another window/tab won't reach us; the on-bar Camera popover does).
+	useEffect(() => {
+		if (!isRecording || !hasCameraBubble) return;
+		const onKey = (e: KeyboardEvent) => {
+			const el = document.activeElement as HTMLElement | null;
+			if (
+				el &&
+				(el.tagName === "INPUT" ||
+					el.tagName === "TEXTAREA" ||
+					el.isContentEditable)
+			)
+				return;
+			if (arrowCameraCorner(e.key)) e.preventDefault();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [isRecording, hasCameraBubble, arrowCameraCorner]);
 	const recordingTimerDisplayMs = user.isPro
 		? durationMs
 		: Math.max(0, FREE_PLAN_MAX_RECORDING_MS - durationMs);
@@ -366,6 +444,7 @@ export const WebRecorderDialog = () => {
 										position={cameraBubble.position}
 										mirror={cameraBubble.mirror}
 										aspect={16 / 9}
+										previewStream={previewStream}
 										onCorner={setCameraCorner}
 										onNormalized={setCameraNormalizedPosition}
 										onToggleMirror={toggleCameraMirror}
@@ -477,6 +556,7 @@ export const WebRecorderDialog = () => {
 					hasCameraBubble={hasCameraBubble}
 					cameraBubble={cameraBubble}
 					cameraAspect={recordingAspect}
+					cameraPreviewStream={cameraPreviewStream}
 					onCameraCorner={setCameraCorner}
 					onCameraNormalized={setCameraNormalizedPosition}
 					onCameraMirror={toggleCameraMirror}

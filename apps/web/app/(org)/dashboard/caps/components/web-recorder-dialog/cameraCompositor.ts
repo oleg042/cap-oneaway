@@ -99,6 +99,41 @@ export const cornerToNormalized = (
 	}
 };
 
+// Arrow-key corner switching: an arrow sets ONE axis of the corner (Left/Right = horizontal,
+// Up/Down = vertical) and keeps the other, so the bubble hops between the four corners. From a free
+// (dragged) position it derives the current axes from where it sits. Returns null for non-arrow keys.
+export const nextCorner = (
+	position: BubblePosition,
+	key: string,
+): BubbleCorner | null => {
+	let vert: "t" | "b";
+	let horiz: "l" | "r";
+	if (position.mode === "corner") {
+		vert = position.corner[0] === "t" ? "t" : "b";
+		horiz = position.corner[1] === "l" ? "l" : "r";
+	} else {
+		vert = position.ny < 0.5 ? "t" : "b";
+		horiz = position.nx < 0.5 ? "l" : "r";
+	}
+	switch (key) {
+		case "ArrowLeft":
+			horiz = "l";
+			break;
+		case "ArrowRight":
+			horiz = "r";
+			break;
+		case "ArrowUp":
+			vert = "t";
+			break;
+		case "ArrowDown":
+			vert = "b";
+			break;
+		default:
+			return null;
+	}
+	return `${vert}${horiz}` as BubbleCorner;
+};
+
 // Resolve the bubble CENTER in target pixels for a given position. Guards degenerate cases (capture
 // narrower than bubble+margins) by centering rather than letting the circle drift off-screen.
 export const resolveBubbleCenter = (

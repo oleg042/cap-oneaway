@@ -18,6 +18,7 @@ export function EmbedRecorder() {
 		document.body.style.background = "#0a0a0a";
 		// Clear the embed flag now that the recorder has rendered, so navigating Cap's other dashboard
 		// pages later doesn't strip their nav (bare mode is only for this recorder iframe).
+		// biome-ignore lint/suspicious/noDocumentCookie: clearing a single short-lived flag cookie
 		document.cookie = "tape_embed=; Max-Age=0; Path=/; SameSite=None; Secure";
 		return () => {
 			if (!had) el.classList.remove("dark");
@@ -42,7 +43,32 @@ export function EmbedRecorder() {
 			<p className="max-w-sm text-sm text-gray-10">
 				Record your screen and voice — pick a screen, hit record, and go.
 			</p>
-			<WebRecorderDialog />
+			<WebRecorderDialog
+				embed
+				onRecorded={(info) => {
+					// Tell the portal (parent frame) the tape is done so it closes the modal and returns to
+					// the board — instead of Cap navigating to its own share page / dashboard. Target the
+					// portal's origin (from the referrer) when known.
+					let target = "*";
+					try {
+						if (document.referrer) target = new URL(document.referrer).origin;
+					} catch {
+						/* fall back to * */
+					}
+					try {
+						window.parent?.postMessage(
+							{
+								type: "tape:recorded",
+								videoId: info.videoId,
+								shareUrl: info.shareUrl,
+							},
+							target,
+						);
+					} catch {
+						/* ignore */
+					}
+				}}
+			/>
 		</div>
 	);
 }
