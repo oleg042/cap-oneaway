@@ -3,10 +3,15 @@
 import { useEffect } from "react";
 import { WebRecorderDialog } from "../components/web-recorder-dialog/web-recorder-dialog";
 
-// Minimal OneAway-branded recorder shown when the portal iframes this route (?embed=1). No Cap chooser,
-// desktop-app upsell, or FAQ — just a clean surface with the browser recorder. The controls live inside
-// the portal's UI via this iframe; Cap remains the upload/storage/transcription engine underneath.
-export function EmbedRecorder() {
+// Minimal OneAway-branded recorder shown when the portal opens this route (?embed=1) in a NEW TAB. No
+// Cap chooser, desktop-app upsell, or FAQ — just a clean full-page branded recorder. Cap remains the
+// upload/storage/transcription engine underneath. `portalOrigin` (passed by the portal through the SSO
+// redirect) is the exact origin we message on completion via window.opener, then this tab self-closes.
+export function EmbedRecorder({
+	portalOrigin,
+}: {
+	portalOrigin?: string;
+} = {}) {
 	// The recorder DIALOG + floating control bar are Radix portals mounted at document.body — OUTSIDE any
 	// wrapper we style — so a `.dark` class on a container can't reach them. Stamp `.dark` on the document
 	// root while the embed is mounted so the whole surface (dialog included) matches the dark portal.
@@ -46,20 +51,29 @@ export function EmbedRecorder() {
 			<WebRecorderDialog
 				embed
 				onRecorded={(info) => {
-					// Tell the portal (parent frame) the tape is done so it closes the modal and returns to
-					// the board — instead of Cap navigating to its own share page / dashboard. Target the
-					// portal's exact origin (the parent that framed us, from the referrer). NEVER broadcast
-					// to "*": the payload carries a share URL, so if we can't identify the parent origin we
-					// skip the message rather than leak it to a hostile framer.
+					// The portal opened this recorder in a new tab, so window.opener IS the portal tab. Tell it
+					// the tape is done (it optimistically inserts + selects the row), then close this tab so the
+					// user is left back on their content/portal tab. Message ONLY the exact portalOrigin the
+					// portal passed through the SSO redirect — never "*", since the payload carries a share URL.
+					// Falls back to window.parent if this is ever iframed instead of opened as a tab.
 					let target: string | null = null;
 					try {
-						if (document.referrer) target = new URL(document.referrer).origin;
+						if (portalOrigin && new URL(portalOrigin).origin === portalOrigin) {
+							target = portalOrigin;
+						}
 					} catch {
 						target = null;
 					}
-					if (target) {
+					const opener = (window.opener as Window | null) ?? null;
+					const dest =
+						opener && opener !== window
+							? opener
+							: window.parent !== window
+								? window.parent
+								: null;
+					if (dest && target) {
 						try {
-							window.parent?.postMessage(
+							dest.postMessage(
 								{
 									type: "tape:recorded",
 									videoId: info.videoId,
@@ -70,6 +84,16 @@ export function EmbedRecorder() {
 						} catch {
 							/* ignore */
 						}
+					}
+					// Standalone tab opened by the portal → hand off then close.
+					if (opener && opener !== window) {
+						setTimeout(() => {
+							try {
+								window.close();
+							} catch {
+								/* ignore */
+							}
+						}, 600);
 					}
 				}}
 			/>

@@ -9,10 +9,12 @@ export const metadata: Metadata = {
 export default async function RecordVideoRoute({
 	searchParams,
 }: {
-	searchParams: Promise<{ embed?: string }>;
+	searchParams: Promise<{ embed?: string; portal?: string }>;
 }) {
 	const sp = await searchParams;
-	// The OneAway portal iframes this route with ?embed=1 → minimal branded recorder (no Cap chooser/FAQ).
-	if (sp?.embed === "1") return <EmbedRecorder />;
+	// The OneAway portal opens this route with ?embed=1 (minimal branded recorder, no Cap chooser/FAQ) in
+	// a NEW TAB, passing &portal=<its origin> so the recorder can message the portal tab (window.opener)
+	// on completion and then self-close.
+	if (sp?.embed === "1") return <EmbedRecorder portalOrigin={sp.portal} />;
 	return <RecordVideoPage />;
 }
