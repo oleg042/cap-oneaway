@@ -10,9 +10,10 @@
 @tailwind utilities;
 
 :root {
-	--primary: #005cb1;
-	--primary-2: #004c93;
-	--primary-3: #003b73;
+	/* OneAway "Tape" brand — orange accent (was Cap blue). Shared across light/dark so it stays theme-aware. */
+	--primary: #fd4f03;
+	--primary-2: #e24503;
+	--primary-3: #b83702;
 	--secondary: #2eb4ff;
 	--secondary-2: #1696e0;
 	--secondary-3: #117ebd;

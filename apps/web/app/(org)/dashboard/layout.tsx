@@ -90,6 +90,10 @@ export default async function DashboardLayout({
 	const theme = (await cookies()).get("theme")?.value ?? "light";
 	const sidebar = (await cookies()).get("sidebarCollapsed")?.value ?? "false";
 	const referClicked = (await cookies()).get("referClicked")?.value ?? "false";
+	// OneAway embed mode: the portal iframes the recorder inside its own UI. Keep every provider the
+	// recorder needs (auth / uploading / org context) but drop all dashboard chrome (nav, header, sidebar,
+	// mobile tab) so only the recorder surface renders. Set by the portal-sso endpoint.
+	const tapeEmbed = (await cookies()).get("tape_embed")?.value === "1";
 
 	return (
 		<AuthContextProvider user={runPromise(resolveCurrentUser)}>
@@ -106,15 +110,21 @@ export default async function DashboardLayout({
 					userPreferences={userPreferences}
 					referClicked={referClicked === "true"}
 				>
-					<DashboardPasteImport />
-					<div className="bg-gray-2 dashboard-grid">
-						<DesktopNav />
-						<div className="flex h-full [grid-area:main] focus:outline-none">
-							<MobileNav />
-							<DashboardInner>{children}</DashboardInner>
-						</div>
-						<MobileTab />
-					</div>
+					{tapeEmbed ? (
+						<div className="w-screen h-screen overflow-auto bg-gray-1">{children}</div>
+					) : (
+						<>
+							<DashboardPasteImport />
+							<div className="bg-gray-2 dashboard-grid">
+								<DesktopNav />
+								<div className="flex h-full [grid-area:main] focus:outline-none">
+									<MobileNav />
+									<DashboardInner>{children}</DashboardInner>
+								</div>
+								<MobileTab />
+							</div>
+						</>
+					)}
 				</DashboardContexts>
 			</UploadingProvider>
 		</AuthContextProvider>

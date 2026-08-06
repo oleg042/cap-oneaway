@@ -159,5 +159,16 @@ export async function GET(request: Request) {
 		path: "/",
 		maxAge: SESSION_MAX_AGE,
 	});
+	// When launched inside the portal's iframe, flag embed mode so the dashboard layout drops its chrome
+	// and only the recorder renders. Short-lived; sameSite:none/secure so it works in the third-party frame.
+	if (url.searchParams.get("embed") === "1") {
+		res.cookies.set("tape_embed", "1", {
+			httpOnly: true,
+			sameSite: "none",
+			secure: true,
+			path: "/",
+			maxAge: 60 * 60,
+		});
+	}
 	return res;
 }
