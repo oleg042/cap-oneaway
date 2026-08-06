@@ -32,10 +32,10 @@ export const EmptyCapState: React.FC<EmptyCapStateProps> = ({ userName }) => {
 				</div>
 				<div className="flex flex-col items-center px-5">
 					<p className="mb-1 text-xl font-semibold text-gray-12">
-						Hey{userName ? ` ${userName}` : ""}! Record your first Cap
+						Hey{userName ? ` ${userName}` : ""}! Record your first Tape
 					</p>
 					<p className="max-w-md text-gray-10 text-md">
-						Craft your narrative with Cap - get projects done quicker.
+						Craft your narrative with Tape - get projects done quicker.
 					</p>
 				</div>
 				<div className="flex flex-wrap gap-3 justify-center items-center mt-4">
@@ -45,7 +45,7 @@ export const EmptyCapState: React.FC<EmptyCapStateProps> = ({ userName }) => {
 						variant="primary"
 					>
 						<FontAwesomeIcon className="size-3.5" icon={faDownload} />
-						Download Cap
+						Download Tape
 					</Button>
 					<p className="text-sm text-gray-10">or</p>
 					<WebRecorderDialog />

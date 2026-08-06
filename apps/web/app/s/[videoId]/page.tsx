@@ -239,7 +239,7 @@ export async function generateMetadata(
 				onNone: () =>
 					awaitRecording
 						? {
-								title: "Cap: Preparing Video",
+								title: "Tape: Preparing Video",
 								description: "This recording is being made available.",
 								robots: "noindex, nofollow",
 							}
@@ -263,7 +263,7 @@ export async function generateMetadata(
 		Effect.catchTags({
 			PolicyDenied: () =>
 				Effect.succeed({
-					title: "Cap: This video is restricted",
+					title: "Tape: This video is restricted",
 					description: "This video has restricted access.",
 					openGraph: {
 						images: [
@@ -281,7 +281,7 @@ export async function generateMetadata(
 				}),
 			VerifyVideoPasswordError: () =>
 				Effect.succeed({
-					title: "Cap: Password Protected Video",
+					title: "Tape: Password Protected Video",
 					description: "This video is password protected.",
 					openGraph: {
 						images: [
@@ -297,7 +297,7 @@ export async function generateMetadata(
 					},
 					twitter: {
 						card: "summary_large_image",
-						title: "Cap: Password Protected Video",
+						title: "Tape: Password Protected Video",
 						description: "This video is password protected.",
 						images: [
 							new URL(

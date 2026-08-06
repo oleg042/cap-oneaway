@@ -3,7 +3,7 @@ import { EmbedRecorder } from "./EmbedRecorder";
 import { RecordVideoPage } from "./RecordVideoPage";
 
 export const metadata: Metadata = {
-	title: "Record a Cap",
+	title: "Record a Tape",
 };
 
 export default async function RecordVideoRoute({

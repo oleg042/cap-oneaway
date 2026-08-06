@@ -65,8 +65,8 @@ export const buildShareVideoMetadata = ({
 	advertiseIframelyPlayer = false,
 }: ShareVideoMetadataInput): Metadata => {
 	const urls = getShareVideoUrls({ videoId, sourceType, webUrl });
-	const title = `${name} | Cap Recording`;
-	const description = "Watch this video on Cap";
+	const title = `${name} | Tape Recording`;
+	const description = "Watch this video on Tape";
 
 	return {
 		title,

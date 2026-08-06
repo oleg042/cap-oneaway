@@ -162,21 +162,21 @@ export const ShareHeader = ({
 	const duplicateMutation = useEffectMutation({
 		mutationFn: () => rpc.VideoDuplicate(data.id),
 		onSuccess: () => {
-			toast.success("Cap duplicated successfully");
+			toast.success("Tape duplicated successfully");
 		},
 		onError: () => {
-			toast.error("Failed to duplicate Cap");
+			toast.error("Failed to duplicate Tape");
 		},
 	});
 
 	const deleteMutation = useEffectMutation({
 		mutationFn: () => rpc.VideoDelete(data.id),
 		onSuccess: () => {
-			toast.success("Cap deleted successfully");
+			toast.success("Tape deleted successfully");
 			push("/dashboard/caps?page=1");
 		},
 		onError: () => {
-			toast.error("Failed to delete Cap");
+			toast.error("Failed to delete Tape");
 		},
 		onSettled: () => {
 			setIsDeleteDialogOpen(false);
@@ -302,7 +302,7 @@ export const ShareHeader = ({
 	const copyShareLink = (url: string) =>
 		copyRichVideoLink({
 			url,
-			title: displayTitle || "Cap Recording",
+			title: displayTitle || "Tape Recording",
 			previewImageUrl: videoPreviewImageUrl(webUrl, data.id),
 		});
 
@@ -408,11 +408,11 @@ export const ShareHeader = ({
 
 		try {
 			await hideShareableLinkCapLogo(data.orgId);
-			toast.success("Cap logo hidden");
+			toast.success("Tape logo hidden");
 			refresh();
 		} catch (error) {
 			toast.error(
-				error instanceof Error ? error.message : "Failed to hide Cap logo",
+				error instanceof Error ? error.message : "Failed to hide Tape logo",
 			);
 		} finally {
 			setIsHidingBranding(false);
@@ -463,7 +463,7 @@ export const ShareHeader = ({
 								<Button
 									variant="gray"
 									size="xs"
-									aria-label="Hide Cap logo"
+									aria-label="Hide Tape logo"
 									className="h-7 gap-1 whitespace-nowrap rounded-full px-2 text-[11px]"
 									disabled={isHidingBranding}
 									onClick={handleHideBranding}
@@ -513,7 +513,7 @@ export const ShareHeader = ({
 						size="sm"
 						variant="blue"
 					>
-						Upgrade To Cap Pro
+						Upgrade To Tape Pro
 					</Button>
 				</div>
 			)}
@@ -554,8 +554,8 @@ export const ShareHeader = ({
 					<ConfirmationDialog
 						open={isDeleteDialogOpen}
 						icon={<FontAwesomeIcon icon={faVideo} />}
-						title="Delete Cap"
-						description={`Are you sure you want to delete the cap "${displayTitle}"? This action cannot be undone.`}
+						title="Delete Tape"
+						description={`Are you sure you want to delete the tape "${displayTitle}"? This action cannot be undone.`}
 						confirmLabel={deleteMutation.isPending ? "Deleting..." : "Delete"}
 						confirmVariant="destructive"
 						loading={deleteMutation.isPending}
@@ -735,7 +735,7 @@ export const ShareHeader = ({
 														className="size-3.5"
 														icon={faEllipsis}
 													/>
-													Manage Cap
+													Manage Tape
 												</Button>
 											</DropdownMenuTrigger>
 											<DropdownMenuContent align="end" sideOffset={5}>
@@ -785,7 +785,7 @@ export const ShareHeader = ({
 													<p className="text-sm text-gray-12">
 														{duplicateMutation.isPending
 															? "Duplicating..."
-															: "Duplicate Cap"}
+															: "Duplicate Tape"}
 													</p>
 												</DropdownMenuItem>
 												<DropdownMenuSeparator />
@@ -803,7 +803,7 @@ export const ShareHeader = ({
 													className="flex items-center gap-2 rounded-lg text-red-500 focus:text-red-600"
 												>
 													<FontAwesomeIcon className="size-3" icon={faTrash} />
-													<p className="text-sm text-inherit">Delete Cap</p>
+													<p className="text-sm text-inherit">Delete Tape</p>
 												</DropdownMenuItem>
 											</DropdownMenuContent>
 										</DropdownMenu>

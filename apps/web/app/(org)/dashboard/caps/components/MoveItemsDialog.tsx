@@ -119,7 +119,7 @@ export function MoveItemsDialog({
 			toast.success(
 				item.type === "folder"
 					? "Folder moved"
-					: `${count} Cap${count === 1 ? "" : "s"} moved`,
+					: `${count} Tape${count === 1 ? "" : "s"} moved`,
 			);
 			onMoved?.();
 			if (item.type === "folder") {
@@ -139,7 +139,7 @@ export function MoveItemsDialog({
 	const title =
 		item.type === "folder"
 			? "Move folder"
-			: `Move ${itemCount} Cap${itemCount === 1 ? "" : "s"}`;
+			: `Move ${itemCount} Tape${itemCount === 1 ? "" : "s"}`;
 	const destinationChanged = selectedFolderId !== currentDestinationId;
 
 	return (

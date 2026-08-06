@@ -64,7 +64,7 @@ export const SelectedCapsBar = ({
 								value={selectedCaps.length}
 								className="tabular-nums text-md text-gray-12"
 							/>
-							cap{selectedCaps.length !== 1 ? "s" : ""} selected
+							tape{selectedCaps.length !== 1 ? "s" : ""} selected
 						</div>
 						<div className="flex gap-2 ml-4">
 							{moveLocation && moveRootLabel && (
@@ -103,10 +103,10 @@ export const SelectedCapsBar = ({
 									<ConfirmationDialog
 										open={confirmOpen}
 										icon={<FontAwesomeIcon icon={faFilm} />}
-										title="Delete selected Caps"
+										title="Delete selected Tapes"
 										description={`Are you sure you want to delete ${
 											selectedCaps.length
-										} cap${
+										} tape${
 											selectedCaps.length === 1 ? "" : "s"
 										}? This action cannot be undone.`}
 										confirmLabel={isDeleting ? "Deleting..." : "Delete"}
