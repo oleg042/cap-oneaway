@@ -467,7 +467,10 @@ export const useWebRecorder = ({
 	}, []);
 
 	useEffect(() => {
-		if (!canUseRecordingSpool()) {
+		// In the portal embed, skip Cap's local-spool recovery UI entirely: it renders an infinite-duration
+		// toast (unclickable/confusing inside the iframe modal), and tape recovery is handled portal-side by
+		// the sync + optimistic insert anyway.
+		if (embed || !canUseRecordingSpool()) {
 			return;
 		}
 
@@ -526,7 +529,7 @@ export const useWebRecorder = ({
 		return () => {
 			cancelled = true;
 		};
-	}, [dismissRecoveredDownload]);
+	}, [dismissRecoveredDownload, embed]);
 
 	const stopRecordingSpoolHeartbeat = useCallback(() => {
 		if (recordingSpoolHeartbeatRef.current === null) return;
