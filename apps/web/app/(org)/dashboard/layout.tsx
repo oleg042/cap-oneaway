@@ -111,8 +111,6 @@ export default async function DashboardLayout({
 					referClicked={referClicked === "true"}
 				>
 					{tapeEmbed ? (
-						{/* `dark` class stamps the Radix dark scale onto the embed subtree (the ThemeProvider only
-					    tracks theme in context, it doesn't set the class) so the recorder matches the dark portal. */}
 					<div className="dark w-screen h-screen overflow-auto bg-gray-1 text-gray-12">{children}</div>
 					) : (
 						<>
