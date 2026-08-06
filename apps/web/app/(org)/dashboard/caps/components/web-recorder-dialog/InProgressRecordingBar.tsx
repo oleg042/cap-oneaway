@@ -253,6 +253,9 @@ export const InProgressRecordingBar = ({
 	const showCameraControl =
 		hasCameraBubble &&
 		Boolean(cameraBubble) &&
+		// Only when the camera actually came up (cameraPreviewStream is set on success, null on fail-open),
+		// so a screen-only recording that lost its camera doesn't show an inert bubble control.
+		Boolean(cameraPreviewStream) &&
 		(phase === "recording" || isPaused);
 
 	const canTogglePause =

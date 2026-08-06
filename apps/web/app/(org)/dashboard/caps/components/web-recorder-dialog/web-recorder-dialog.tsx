@@ -204,6 +204,23 @@ export const WebRecorderDialog = ({
 	// and where the bubble will sit. Stopped when recording begins (handleStartClick), on camera change, or
 	// on close — so the compositor can claim the device cleanly.
 	const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+	const previewStreamRef = useRef<MediaStream | null>(null);
+	const previewGenRef = useRef(0); // bumped to invalidate any in-flight getUserMedia
+	const previewPromiseRef = useRef<Promise<void> | null>(null); // the pending open, so we can await it
+	// Release the pre-record self-view — a resolved stream AND any still-pending getUserMedia (via the
+	// generation bump: a late resolution sees a stale gen and stops itself). Returns the pending open so
+	// callers can await the device actually being freed before claiming it for the compositor.
+	const stopPreview = useCallback(() => {
+		previewGenRef.current++;
+		if (previewStreamRef.current) {
+			previewStreamRef.current.getTracks().forEach((t) => {
+				t.stop();
+			});
+			previewStreamRef.current = null;
+		}
+		setPreviewStream(null);
+		return previewPromiseRef.current;
+	}, []);
 	useEffect(() => {
 		if (
 			!open ||
@@ -212,35 +229,31 @@ export const WebRecorderDialog = ({
 			isRecording ||
 			isBusy
 		) {
-			setPreviewStream(null);
+			stopPreview();
 			return;
 		}
-		let stream: MediaStream | null = null;
-		let cancelled = false;
-		navigator.mediaDevices
+		const gen = ++previewGenRef.current;
+		const p = navigator.mediaDevices
 			.getUserMedia({ video: { deviceId: { exact: selectedCameraId } } })
 			.then((s) => {
-				if (cancelled) {
+				if (gen !== previewGenRef.current) {
+					// Superseded or stopped while opening — release immediately.
 					s.getTracks().forEach((t) => {
 						t.stop();
 					});
 					return;
 				}
-				stream = s;
+				previewStreamRef.current = s;
 				setPreviewStream(s);
 			})
 			.catch(() => {
 				/* preview is best-effort; the pad still shows a placeholder */
 			});
+		previewPromiseRef.current = p;
 		return () => {
-			cancelled = true;
-			if (stream)
-				stream.getTracks().forEach((t) => {
-					t.stop();
-				});
-			setPreviewStream(null);
+			stopPreview();
 		};
-	}, [open, recordingMode, selectedCameraId, isRecording, isBusy]);
+	}, [open, recordingMode, selectedCameraId, isRecording, isBusy, stopPreview]);
 
 	useEffect(() => {
 		if (
@@ -297,17 +310,17 @@ export const WebRecorderDialog = ({
 		if (recordingMode === "camera") {
 			cameraPreviewRef.current?.stopStream();
 			await waitForNextFrame();
-		} else if (previewStream) {
-			// Release the pre-record self-view so the compositor's getUserMedia claims the camera cleanly.
-			previewStream.getTracks().forEach((t) => {
-				t.stop();
-			});
-			setPreviewStream(null);
+		} else {
+			// Release the pre-record self-view — including one whose getUserMedia is still pending — and
+			// await it actually finishing so the compositor's getUserMedia claims the camera without
+			// contending with a half-open preview handle (NotReadableError on some webcams).
+			const pending = stopPreview();
+			if (pending) await pending.catch(() => {});
 			await waitForNextFrame();
 		}
 
 		await startRecording();
-	}, [recordingMode, startRecording, previewStream]);
+	}, [recordingMode, startRecording, stopPreview]);
 
 	const handleClose = () => {
 		if (!isBusy) {

@@ -48,24 +48,28 @@ export function EmbedRecorder() {
 				onRecorded={(info) => {
 					// Tell the portal (parent frame) the tape is done so it closes the modal and returns to
 					// the board — instead of Cap navigating to its own share page / dashboard. Target the
-					// portal's origin (from the referrer) when known.
-					let target = "*";
+					// portal's exact origin (the parent that framed us, from the referrer). NEVER broadcast
+					// to "*": the payload carries a share URL, so if we can't identify the parent origin we
+					// skip the message rather than leak it to a hostile framer.
+					let target: string | null = null;
 					try {
 						if (document.referrer) target = new URL(document.referrer).origin;
 					} catch {
-						/* fall back to * */
+						target = null;
 					}
-					try {
-						window.parent?.postMessage(
-							{
-								type: "tape:recorded",
-								videoId: info.videoId,
-								shareUrl: info.shareUrl,
-							},
-							target,
-						);
-					} catch {
-						/* ignore */
+					if (target) {
+						try {
+							window.parent?.postMessage(
+								{
+									type: "tape:recorded",
+									videoId: info.videoId,
+									shareUrl: info.shareUrl,
+								},
+								target,
+							);
+						} catch {
+							/* ignore */
+						}
 					}
 				}}
 			/>

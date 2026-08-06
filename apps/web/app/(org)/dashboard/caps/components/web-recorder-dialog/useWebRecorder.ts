@@ -1070,18 +1070,24 @@ export const useWebRecorder = ({
 				isCompositorSupported()
 			) {
 				let camStream: MediaStream | null = null;
+				let gumPromise: Promise<MediaStream> | null = null;
 				try {
 					// Time-bound getUserMedia so a busy/stuck camera degrades to screen-only within a few
 					// seconds instead of hanging the whole start flow.
+					// Hold the getUserMedia promise so that if the 4s timeout wins the race, a webcam that warms
+					// up LATE (OBS Virtual Cam, busy UVC) still gets torn down — Promise.race doesn't cancel
+					// the loser, so an un-referenced live stream would otherwise keep the camera light on.
+					const gum = navigator.mediaDevices.getUserMedia({
+						video: {
+							deviceId: { exact: selectedCameraId },
+							width: { ideal: 1280 },
+							height: { ideal: 720 },
+							frameRate: { ideal: 30 },
+						},
+					});
+					gumPromise = gum;
 					camStream = await Promise.race([
-						navigator.mediaDevices.getUserMedia({
-							video: {
-								deviceId: { exact: selectedCameraId },
-								width: { ideal: 1280 },
-								height: { ideal: 720 },
-								frameRate: { ideal: 30 },
-							},
-						}),
+						gum,
 						new Promise<never>((_, reject) =>
 							setTimeout(
 								() => reject(new Error("Camera did not start in time")),
@@ -1141,6 +1147,16 @@ export const useWebRecorder = ({
 					camStream?.getTracks().forEach((t) => {
 						t.stop();
 					});
+					// If the timeout won the race, getUserMedia may still resolve later — stop that stream too
+					// so the camera light doesn't stay on for the whole (screen-only) recording.
+					void gumPromise
+						?.then((s) => {
+							if (s !== camStream)
+								s.getTracks().forEach((t) => {
+									t.stop();
+								});
+						})
+						.catch(() => {});
 					cameraStreamRef.current = null;
 					cameraCompositorRef.current = null;
 					setCameraPreviewStream(null);

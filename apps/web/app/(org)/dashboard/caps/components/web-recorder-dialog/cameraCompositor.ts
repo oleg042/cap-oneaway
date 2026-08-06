@@ -428,7 +428,16 @@ export const createCameraCompositor = async (
 		try {
 			while (!disposed) {
 				const { value: frame, done } = await screenReader.read();
-				if (done || !frame) break;
+				if (done || !frame) {
+					// Screen track ended (e.g. share stopped immediately). If it ended before we ever wrote a
+					// frame, settle the gate NOW so the caller degrades to screen-only at once instead of
+					// waiting out the 3s timeout.
+					if (!firstSettled) {
+						firstSettled = true;
+						firstReject(new Error("Screen track ended before first frame"));
+					}
+					break;
+				}
 				if (disposed) {
 					frame.close();
 					break;
