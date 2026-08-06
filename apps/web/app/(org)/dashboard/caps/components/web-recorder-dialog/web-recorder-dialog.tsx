@@ -349,6 +349,31 @@ export const WebRecorderDialog = ({
 									onCameraChange={handleCameraChange}
 									onRefreshDevices={refreshCameras}
 								/>
+								{/* The camera floats as a Picture-in-Picture window that only gets captured when you
+								    share your WHOLE screen. For a Window/Tab share it stays visible to you but is
+								    NOT in the recording — warn unmissably so nobody records a faceless walkthrough. */}
+								{(recordingMode === "window" || recordingMode === "tab") &&
+									selectedCameraId && (
+										<div
+											data-testid="tape-camera-warning"
+											className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12"
+										>
+											<span className="font-medium">
+												Your camera won’t be in this recording.
+											</span>{" "}
+											A window or tab capture can’t include the floating camera
+											— it’s in the video only when you{" "}
+											<button
+												type="button"
+												disabled={isBusy}
+												onClick={() => setRecordingMode("fullscreen")}
+												className="font-medium underline underline-offset-2 hover:text-amber-11 disabled:opacity-60"
+											>
+												share your whole screen
+											</button>
+											.
+										</div>
+									)}
 								<MicrophoneSelector
 									selectedMicId={selectedMicId}
 									availableMics={availableMics}
