@@ -6,7 +6,6 @@ import type {
 } from "@cap/recorder-core/recorder-types";
 import clsx from "clsx";
 import {
-	Camera,
 	Mic,
 	MicOff,
 	MoreVertical,
@@ -29,8 +28,6 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
-import { CameraBubbleControls } from "./CameraBubbleControls";
-import type { BubbleConfig, BubbleCorner } from "./cameraCompositor";
 
 const phaseMessages: Partial<Record<RecorderPhase, string>> = {
 	recording: "Recording",
@@ -64,13 +61,6 @@ interface InProgressRecordingBarProps {
 	onRestart?: () => void | Promise<void>;
 	isRestarting?: boolean;
 	errorDownload?: RecordingFailureDownload | null;
-	hasCameraBubble?: boolean;
-	cameraBubble?: BubbleConfig;
-	cameraAspect?: number;
-	cameraPreviewStream?: MediaStream | null;
-	onCameraCorner?: (corner: BubbleCorner) => void;
-	onCameraNormalized?: (nx: number, ny: number) => void;
-	onCameraMirror?: () => void;
 }
 
 const DRAG_PADDING = 12;
@@ -86,16 +76,8 @@ export const InProgressRecordingBar = ({
 	onRestart,
 	isRestarting = false,
 	errorDownload,
-	hasCameraBubble = false,
-	cameraBubble,
-	cameraAspect,
-	cameraPreviewStream,
-	onCameraCorner,
-	onCameraNormalized,
-	onCameraMirror,
 }: InProgressRecordingBarProps) => {
 	const [mounted, setMounted] = useState(false);
-	const [cameraPopoverOpen, setCameraPopoverOpen] = useState(false);
 	const [position, setPosition] = useState({ x: 0, y: 24 });
 	const [isDragging, setIsDragging] = useState(false);
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -250,14 +232,6 @@ export const InProgressRecordingBar = ({
 		}
 	};
 
-	const showCameraControl =
-		hasCameraBubble &&
-		Boolean(cameraBubble) &&
-		// Only when the camera actually came up (cameraPreviewStream is set on success, null on fail-open),
-		// so a screen-only recording that lost its camera doesn't show an inert bubble control.
-		Boolean(cameraPreviewStream) &&
-		(phase === "recording" || isPaused);
-
 	const canTogglePause =
 		(phase === "recording" && Boolean(onPause)) ||
 		(isPaused && Boolean(onResume));
@@ -347,41 +321,6 @@ export const InProgressRecordingBar = ({
 
 						<div className="flex gap-3 items-center" data-no-drag>
 							<InlineChunkProgress chunkUploads={chunkUploads} />
-							{showCameraControl && cameraBubble && (
-								<Popover
-									open={cameraPopoverOpen}
-									onOpenChange={setCameraPopoverOpen}
-								>
-									<PopoverTrigger asChild>
-										<button
-											type="button"
-											data-no-drag
-											aria-label="Camera bubble position"
-											aria-expanded={cameraPopoverOpen}
-											className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-11 transition-all hover:bg-gray-3 hover:text-gray-12 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-9"
-										>
-											<Camera className="size-5" />
-										</button>
-									</PopoverTrigger>
-									<PopoverContent
-										align="center"
-										data-no-drag
-										className="z-[700] w-64 border border-gray-5 bg-gray-1 p-3 text-gray-12 shadow-2xl"
-									>
-										<CameraBubbleControls
-											position={cameraBubble.position}
-											mirror={cameraBubble.mirror}
-											aspect={
-												cameraAspect && cameraAspect > 0 ? cameraAspect : 16 / 9
-											}
-											previewStream={cameraPreviewStream}
-											onCorner={(c) => onCameraCorner?.(c)}
-											onNormalized={(nx, ny) => onCameraNormalized?.(nx, ny)}
-											onToggleMirror={() => onCameraMirror?.()}
-										/>
-									</PopoverContent>
-								</Popover>
-							)}
 							<div className="flex relative justify-center items-center w-8 h-8">
 								{hasAudioTrack ? (
 									<>

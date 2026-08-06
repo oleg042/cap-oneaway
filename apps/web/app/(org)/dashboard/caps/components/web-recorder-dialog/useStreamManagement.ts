@@ -1,14 +1,10 @@
 import { useCallback, useRef } from "react";
-import type { CameraCompositorController } from "./cameraCompositor";
 
 export const useStreamManagement = () => {
 	const displayStreamRef = useRef<MediaStream | null>(null);
 	const cameraStreamRef = useRef<MediaStream | null>(null);
 	const micStreamRef = useRef<MediaStream | null>(null);
 	const mixedStreamRef = useRef<MediaStream | null>(null);
-	// Round-camera canvas compositor for screen+camera recordings. Torn down FIRST in cleanupStreams so
-	// its rAF/rVFC loop + hidden <video> elements are released before the source tracks it reads are stopped.
-	const cameraCompositorRef = useRef<CameraCompositorController | null>(null);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const detectionTimeoutsRef = useRef<number[]>([]);
@@ -30,17 +26,6 @@ export const useStreamManagement = () => {
 	}, []);
 
 	const cleanupStreams = useCallback(() => {
-		// Destroy the compositor FIRST: stop its draw loop + release its hidden <video> elements before
-		// the source screen/camera tracks it reads are stopped below. Every recorder exit (normal stop,
-		// reset, error, restart, unmount) funnels through cleanupStreams, so this one call covers them all.
-		if (cameraCompositorRef.current) {
-			try {
-				cameraCompositorRef.current.destroy();
-			} catch {
-				/* ignore */
-			}
-			cameraCompositorRef.current = null;
-		}
 		clearDetectionTracking();
 		const stopTracks = (stream: MediaStream | null) => {
 			stream?.getTracks().forEach((track) => {
@@ -71,7 +56,6 @@ export const useStreamManagement = () => {
 		cameraStreamRef,
 		micStreamRef,
 		mixedStreamRef,
-		cameraCompositorRef,
 		audioContextRef,
 		videoRef,
 		detectionTimeoutsRef,

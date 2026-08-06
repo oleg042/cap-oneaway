@@ -42,14 +42,6 @@ import { ThumbnailRequest } from "@/lib/Requests/ThumbnailRequest";
 import { uploadWithTarget } from "@/utils/upload-target";
 import { useUploadingContext } from "../../UploadingContext";
 import { sendProgressUpdate } from "../sendProgressUpdate";
-import {
-	type BubbleConfig,
-	type BubbleCorner,
-	clamp as clampBubble,
-	createCameraCompositor,
-	isCompositorSupported,
-	nextCorner,
-} from "./cameraCompositor";
 import type { RecordingMode } from "./RecordingModeSelector";
 import {
 	canConvertToMp4InBrowser,
@@ -87,9 +79,8 @@ interface UseWebRecorderOptions {
 	onRecordingSurfaceDetected?: (mode: RecordingMode) => void;
 	onRecordingStart?: () => void;
 	onRecordingStop?: () => void;
-	// Embed mode (portal iframe): suppress Cap's own post-record navigation (opening the /s/ share page in
-	// a new tab + router.refresh(), which re-renders the dashboard with full chrome — the "weird screen")
-	// and instead hand the result back to the portal so it can close the modal and return to the board.
+	// Portal embed: suppress Cap's post-record navigation (opening /s/ + router.refresh() re-renders the
+	// dashboard with full chrome) and hand the tape back to the portal so it closes the modal + returns.
 	embed?: boolean;
 	onRecorded?: (info: { videoId: string; shareUrl: string }) => void;
 }
@@ -240,7 +231,6 @@ export const useWebRecorder = ({
 		cameraStreamRef,
 		micStreamRef,
 		mixedStreamRef,
-		cameraCompositorRef,
 		audioContextRef,
 		detectionTimeoutsRef,
 		detectionCleanupRef,
@@ -311,65 +301,6 @@ export const useWebRecorder = ({
 		height?: number;
 		fps?: number;
 	}>({});
-
-	// Round-camera bubble placement. Default: bottom-right corner, not mirrored. `cameraBubble` drives the
-	// controls' re-render; `cameraBubbleRef` is what the compositor's draw loop reads EVERY frame — the
-	// setters write the ref synchronously so a mid-recording move applies on the very next frame (before
-	// React commits), which is what makes the bubble movable while recording.
-	const [cameraBubble, setCameraBubble] = useState<BubbleConfig>({
-		position: { mode: "corner", corner: "bl" },
-		mirror: false,
-	});
-	const cameraBubbleRef = useRef<BubbleConfig>(cameraBubble);
-	const setCameraCorner = useCallback((corner: BubbleCorner) => {
-		const next: BubbleConfig = {
-			...cameraBubbleRef.current,
-			position: { mode: "corner", corner },
-		};
-		cameraBubbleRef.current = next;
-		setCameraBubble(next);
-	}, []);
-	const setCameraNormalizedPosition = useCallback((nx: number, ny: number) => {
-		const next: BubbleConfig = {
-			...cameraBubbleRef.current,
-			position: {
-				mode: "free",
-				nx: clampBubble(nx, 0, 1),
-				ny: clampBubble(ny, 0, 1),
-			},
-		};
-		cameraBubbleRef.current = next;
-		setCameraBubble(next);
-	}, []);
-	const toggleCameraMirror = useCallback(() => {
-		const next: BubbleConfig = {
-			...cameraBubbleRef.current,
-			mirror: !cameraBubbleRef.current.mirror,
-		};
-		cameraBubbleRef.current = next;
-		setCameraBubble(next);
-	}, []);
-	// Arrow keys hop the bubble corner-to-corner (Left/Right set the horizontal corner, Up/Down the
-	// vertical), keeping the other axis. Used by the drag pad (when focused) and a global listener while
-	// the recorder window has focus during recording. Returns true if the key was an arrow (handled).
-	const arrowCameraCorner = useCallback(
-		(key: string) => {
-			const c = nextCorner(cameraBubbleRef.current.position, key);
-			if (c) setCameraCorner(c);
-			return c !== null;
-		},
-		[setCameraCorner],
-	);
-	// Aspect ratio of the actual recording surface, published once the screen stream is acquired so the
-	// mid-record bubble control's drag pad matches the real frame (pre-record it stays 16:9).
-	const [recordingAspect, setRecordingAspect] = useState(16 / 9);
-	// The live camera stream while a bubble is active, surfaced so the UI can show a self-view (so the user
-	// sees their face + where the bubble sits) during setup and recording. Same stream the compositor reads.
-	const [cameraPreviewStream, setCameraPreviewStream] =
-		useState<MediaStream | null>(null);
-	// Set true by any teardown that runs while startRecording is mid-flight (unmount/reset/error), so the
-	// compositor built just after an `await` can be destroyed instead of leaking an unstoppable frame loop.
-	const compositorAbortRef = useRef(false);
 	const stopRecordingRef = useRef<(() => Promise<void>) | null>(null);
 	const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
 	const instantUploaderRef = useRef<InstantRecordingUploader | null>(null);
@@ -467,9 +398,8 @@ export const useWebRecorder = ({
 	}, []);
 
 	useEffect(() => {
-		// In the portal embed, skip Cap's local-spool recovery UI entirely: it renders an infinite-duration
-		// toast (unclickable/confusing inside the iframe modal), and tape recovery is handled portal-side by
-		// the sync + optimistic insert anyway.
+		// In the portal embed, skip Cap's local-spool recovery: it renders an infinite-duration toast that's
+		// unclickable inside the iframe modal, and recovery is handled portal-side via sync + optimistic insert.
 		if (embed || !canUseRecordingSpool()) {
 			return;
 		}
@@ -747,9 +677,6 @@ export const useWebRecorder = ({
 	);
 
 	const cleanupRecordingState = useCallback(async () => {
-		// Signal any in-flight startRecording (awaiting camera/compositor) to abort + self-destroy.
-		compositorAbortRef.current = true;
-		setCameraPreviewStream(null);
 		cleanupStreams();
 		clearTimer();
 		resetRecorder();
@@ -875,7 +802,6 @@ export const useWebRecorder = ({
 
 		replaceErrorDownload(null);
 		shareUrlOpenedRef.current = false;
-		compositorAbortRef.current = false;
 
 		setChunkUploads([]);
 		setIsSettingUp(true);
@@ -1050,123 +976,6 @@ export const useWebRecorder = ({
 						: undefined,
 			};
 
-			// Screen + camera -> composite the webcam as a round, movable bubble baked into the recording.
-			// Purely additive: `recordingVideoTracks` starts as the raw screen track and is replaced ONLY
-			// when compositing succeeds; any failure fails OPEN to the exact original screen-only path.
-			// Placed AFTER dimensionsRef (which feeds the instant-upload resolution) and using the SCREEN
-			// track as `firstTrack` throughout, so surface detection + the Stop-sharing 'ended' handler
-			// stay untouched. Camera-only mode never composites (the camera IS the recording).
-			// Publish the real recording aspect for the mid-record bubble control's drag pad.
-			if (dimensionsRef.current.width && dimensionsRef.current.height) {
-				setRecordingAspect(
-					dimensionsRef.current.width / dimensionsRef.current.height,
-				);
-			}
-
-			// Widen to MediaStreamTrack[] so the composited canvas track (a plain MediaStreamTrack) can
-			// substitute for the raw screen video tracks below.
-			let recordingVideoTracks: MediaStreamTrack[] =
-				videoStream.getVideoTracks();
-			if (
-				recordingMode !== "camera" &&
-				selectedCameraId &&
-				isCompositorSupported()
-			) {
-				let camStream: MediaStream | null = null;
-				let gumPromise: Promise<MediaStream> | null = null;
-				try {
-					// Time-bound getUserMedia so a busy/stuck camera degrades to screen-only within a few
-					// seconds instead of hanging the whole start flow.
-					// Hold the getUserMedia promise so that if the 4s timeout wins the race, a webcam that warms
-					// up LATE (OBS Virtual Cam, busy UVC) still gets torn down — Promise.race doesn't cancel
-					// the loser, so an un-referenced live stream would otherwise keep the camera light on.
-					const gum = navigator.mediaDevices.getUserMedia({
-						video: {
-							deviceId: { exact: selectedCameraId },
-							width: { ideal: 1280 },
-							height: { ideal: 720 },
-							frameRate: { ideal: 30 },
-						},
-					});
-					gumPromise = gum;
-					camStream = await Promise.race([
-						gum,
-						new Promise<never>((_, reject) =>
-							setTimeout(
-								() => reject(new Error("Camera did not start in time")),
-								4000,
-							),
-						),
-					]);
-					cameraStreamRef.current = camStream; // cleanupStreams stops this source stream
-					setCameraPreviewStream(camStream);
-					const compFps = Math.min(dimensionsRef.current.fps ?? 30, 30);
-					const controller = await createCameraCompositor({
-						screenStream: videoStream,
-						cameraStream: camStream,
-						width: dimensionsRef.current.width ?? 0,
-						height: dimensionsRef.current.height ?? 0,
-						fps: compFps,
-						getConfig: () => cameraBubbleRef.current,
-					});
-					// If a teardown (unmount/reset/error) fired while we were awaiting the camera + compositor,
-					// destroy what we just built instead of leaving an unstoppable frame loop, and abort start.
-					if (compositorAbortRef.current) {
-						controller.destroy();
-						camStream.getTracks().forEach((t) => {
-							t.stop();
-						});
-						cameraStreamRef.current = null;
-						return;
-					}
-					cameraCompositorRef.current = controller;
-					// Keep the instant-upload resolution (created from dimensionsRef) equal to the canvas we
-					// actually record, in case the screen track didn't report width/height.
-					if (!dimensionsRef.current.width || !dimensionsRef.current.height) {
-						dimensionsRef.current.width = controller.canvas.width;
-						dimensionsRef.current.height = controller.canvas.height;
-					}
-					recordingVideoTracks = [controller.videoTrack];
-					// Camera unplugged mid-record -> degrade to a muted disc; does NOT stop the recording
-					// (only the SCREEN track's 'ended' handler below stops it).
-					camStream.getVideoTracks()[0]?.addEventListener(
-						"ended",
-						() => {
-							cameraCompositorRef.current?.setCameraEnded();
-							toast.warning(
-								"Camera disconnected. Continuing screen recording.",
-							);
-						},
-						{ once: true },
-					);
-				} catch (camErr) {
-					console.warn(
-						"Camera bubble unavailable; recording screen only",
-						camErr,
-					);
-					toast.warning(
-						"Camera unavailable. Recording the screen without the camera bubble.",
-					);
-					camStream?.getTracks().forEach((t) => {
-						t.stop();
-					});
-					// If the timeout won the race, getUserMedia may still resolve later — stop that stream too
-					// so the camera light doesn't stay on for the whole (screen-only) recording.
-					void gumPromise
-						?.then((s) => {
-							if (s !== camStream)
-								s.getTracks().forEach((t) => {
-									t.stop();
-								});
-						})
-						.catch(() => {});
-					cameraStreamRef.current = null;
-					cameraCompositorRef.current = null;
-					setCameraPreviewStream(null);
-					recordingVideoTracks = videoStream.getVideoTracks();
-				}
-			}
-
 			const systemAudioTracks =
 				recordingMode !== "camera" && systemAudioEnabled
 					? (videoStream?.getAudioTracks() ?? [])
@@ -1244,11 +1053,8 @@ export const useWebRecorder = ({
 				audioTracks = micStream?.getAudioTracks() ?? [];
 			}
 
-			// SUBSTITUTE (never append) the recorded video track: the composited canvas track when a camera
-			// bubble is active, otherwise the raw screen track. Adding both would be undefined MediaRecorder
-			// behavior. `firstTrack` remains the SCREEN track, so its 'ended' handler still stops on "Stop sharing".
 			const mixedStream = new MediaStream([
-				...recordingVideoTracks,
+				...videoStream.getVideoTracks(),
 				...audioTracks,
 			]);
 
@@ -1738,7 +1544,7 @@ export const useWebRecorder = ({
 					: "Recording uploaded.",
 			);
 			if (embed) {
-				// Hand the tape back to the portal (it closes the modal + refreshes the board). Do NOT open
+				// Hand the tape back to the portal (it closes the modal + returns to the board). Do NOT open
 				// Cap's share page or router.refresh() — the latter re-renders the dashboard with full chrome.
 				onRecorded?.({
 					videoId: String(creationResult.id),
@@ -1920,12 +1726,5 @@ export const useWebRecorder = ({
 		supportsDisplayRecording,
 		supportCheckCompleted,
 		screenCaptureWarning,
-		cameraBubble,
-		setCameraCorner,
-		setCameraNormalizedPosition,
-		toggleCameraMirror,
-		arrowCameraCorner,
-		recordingAspect,
-		cameraPreviewStream,
 	};
 };

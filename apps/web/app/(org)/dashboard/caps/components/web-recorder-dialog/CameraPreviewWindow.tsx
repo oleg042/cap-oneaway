@@ -96,7 +96,7 @@ export const CameraPreviewWindow = forwardRef<
 	CameraPreviewWindowProps
 >(({ cameraId, onClose }, ref) => {
 	const [size, setSize] = useState<CameraPreviewSize>("sm");
-	const [shape, setShape] = useState<CameraPreviewShape>("round");
+	const [shape, setShape] = useState<CameraPreviewShape>("full");
 	const [mirrored, setMirrored] = useState(false);
 	const [position, setPosition] = useState<{ x: number; y: number } | null>(
 		null,
