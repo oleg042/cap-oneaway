@@ -22,6 +22,7 @@ import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { InProgressRecordingBar } from "./InProgressRecordingBar";
 import { MicrophoneSelector } from "./MicrophoneSelector";
+import { RecordingBubblePreview } from "./RecordingBubblePreview";
 import { RecordingButton } from "./RecordingButton";
 import {
 	type RecordingMode,
@@ -573,6 +574,14 @@ export const WebRecorderDialog = ({
 					onCameraCorner={setCameraCorner}
 					onCameraNormalized={setCameraNormalizedPosition}
 					onCameraMirror={toggleCameraMirror}
+				/>
+			)}
+			{isRecording && hasCameraBubble && cameraPreviewStream && (
+				<RecordingBubblePreview
+					stream={cameraPreviewStream}
+					position={cameraBubble.position}
+					mirror={cameraBubble.mirror}
+					onNormalized={setCameraNormalizedPosition}
 				/>
 			)}
 			{showCameraPreview && (
