@@ -1,7 +1,6 @@
 "use client";
 
 import clsx from "clsx";
-import { useDashboardContext } from "../../../Contexts";
 
 interface WebRecorderDialogHeaderProps {
 	isBusy: boolean;
@@ -12,15 +11,6 @@ export const WebRecorderDialogHeader = ({
 	isBusy,
 	onClose,
 }: WebRecorderDialogHeaderProps) => {
-	const { user, setUpgradeModalOpen } = useDashboardContext();
-	const planLabel = user.isPro ? "Pro" : "Free";
-	const planClassName = clsx(
-		"ml-2 inline-flex items-center rounded-full px-2 text-[0.7rem] font-medium transition-colors",
-		user.isPro
-			? "bg-blue-9 text-gray-1"
-			: "cursor-pointer bg-gray-3 text-gray-12 hover:bg-gray-4",
-	);
-
 	return (
 		<>
 			<div className="absolute left-3 top-3 flex gap-1.5 items-center">
@@ -52,14 +42,6 @@ export const WebRecorderDialogHeader = ({
 							tape
 						</span>
 						<span className="text-[11px] text-gray-9">by OneAway</span>
-					</span>
-					<span
-						onClick={() => {
-							if (!user.isPro) setUpgradeModalOpen(true);
-						}}
-						className={planClassName}
-					>
-						{planLabel}
 					</span>
 				</div>
 			</div>

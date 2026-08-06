@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const REMEMBER_DEVICES_KEY = "cap-web-recorder-remember-devices";
 const PREFERRED_CAMERA_KEY = "cap-web-recorder-preferred-camera";
@@ -78,6 +78,22 @@ export const useDevicePreferences = ({
 		selectedCameraId,
 		selectedMicId,
 	]);
+
+	// Default camera + mic to the current (first enumerated) device on each open, so recording starts with
+	// the user's devices ON. A remembered/explicit selection already set a value → the `cur ??` keeps it.
+	// Runs once per open (didDefault), after devices have enumerated.
+	const didDefault = useRef(false);
+	useEffect(() => {
+		if (!open) {
+			didDefault.current = false;
+			return;
+		}
+		if (didDefault.current) return;
+		if (availableCameras.length === 0 && availableMics.length === 0) return; // wait for enumeration
+		setSelectedCameraId((cur) => cur ?? availableCameras[0]?.deviceId ?? null);
+		setSelectedMicId((cur) => cur ?? availableMics[0]?.deviceId ?? null);
+		didDefault.current = true;
+	}, [open, availableCameras, availableMics]);
 
 	const handleCameraChange = (cameraId: string | null) => {
 		setSelectedCameraId(cameraId);

@@ -183,12 +183,14 @@ export async function GET(request: Request) {
 	// When launched inside the portal's iframe, flag embed mode so the dashboard layout drops its chrome
 	// and only the recorder renders. Short-lived; sameSite:none/secure so it works in the third-party frame.
 	if (url.searchParams.get("embed") === "1") {
+		// Not httpOnly + short-lived: the embed recorder clears it client-side right after it renders, so
+		// bare mode never leaks onto Cap's other dashboard pages (which would strip their nav = "broken").
 		res.cookies.set("tape_embed", "1", {
-			httpOnly: true,
+			httpOnly: false,
 			sameSite: "none",
 			secure: true,
 			path: "/",
-			maxAge: 60 * 60,
+			maxAge: 5 * 60,
 		});
 	}
 	return res;
