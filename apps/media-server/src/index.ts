@@ -32,5 +32,8 @@ process.on("SIGHUP", () => {
 
 export default {
 	port,
+	// Bind IPv6 (::) so the service is reachable over Railway's IPv6-only private network
+	// (cap-web -> cap-media-server.railway.internal). A dual-stack :: socket still accepts IPv4.
+	hostname: process.env.HOST || "::",
 	fetch: app.fetch,
 };
