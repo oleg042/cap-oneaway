@@ -257,7 +257,10 @@ export const InProgressRecordingBar = ({
 		<div
 			ref={containerRef}
 			className={clsx(
-				"fixed z-[650] pointer-events-auto animate-in fade-in",
+				// `dark` so the bar's Radix gray scale resolves dark regardless of the host page's theme —
+				// otherwise bg-gray-1 renders white in the portal embed (the bar is a document.body portal
+				// that can miss the .dark ancestor). A floating recording control bar is always dark.
+				"dark fixed z-[650] pointer-events-auto animate-in fade-in",
 				isDragging ? "cursor-grabbing" : "cursor-move",
 			)}
 			style={{ left: `${position.x}px`, top: `${position.y}px` }}
