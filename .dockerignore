@@ -2,3 +2,9 @@ target
 crates
 **/node_modules
 **/.next
+# OneAway: keep the build context lean for Railway's remote builder (the web Dockerfile does
+# `COPY . .`). .git alone is ~370M of dead weight the build never needs.
+.git
+.oneaway
+**/*.mp4
+**/*.mov
