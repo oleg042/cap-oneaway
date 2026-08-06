@@ -148,7 +148,10 @@ export async function GET(request: Request) {
 			? requested
 			: "/dashboard";
 
-	const res = NextResponse.redirect(new URL(safe, url.origin));
+	// Behind Railway's proxy, request.url carries the container's internal host (0.0.0.0:3000), so redirect
+	// off the public WEB_URL instead — otherwise the browser follows the 307 to an unresolvable host.
+	const base = process.env.WEB_URL || process.env.NEXTAUTH_URL || url.origin;
+	const res = NextResponse.redirect(new URL(safe, base));
 	res.cookies.set(COOKIE_NAME, token, {
 		httpOnly: true,
 		sameSite: "none",
