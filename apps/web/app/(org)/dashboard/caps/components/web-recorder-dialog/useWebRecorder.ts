@@ -170,7 +170,7 @@ const getStartRecordingErrorMessage = (
 
 	if (error instanceof TypeError) {
 		if (/fetch|network|load failed|failed to fetch/i.test(error.message)) {
-			return "Cap couldn't create the upload session. Check Chrome extensions, privacy settings, or network access, then try again.";
+			return "Couldn't create the upload session. Check Chrome extensions, privacy settings, or network access, then try again.";
 		}
 
 		return "Your browser rejected the capture settings. Try another recording mode, or turn off system audio and try again.";
@@ -182,7 +182,7 @@ const getStartRecordingErrorMessage = (
 		}
 
 		if (/multipart|upload|request to/i.test(error.message)) {
-			return "Cap couldn't create the upload session. Check Chrome extensions, privacy settings, or network access, then try again.";
+			return "Couldn't create the upload session. Check Chrome extensions, privacy settings, or network access, then try again.";
 		}
 	}
 

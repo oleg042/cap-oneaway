@@ -21,10 +21,16 @@ const RECORDER_EMAIL = (
 ).toLowerCase();
 
 // Ticket = base64url(payloadJSON).base64url(hmacSHA256(payload, PORTAL_SSO_SECRET)). Payload carries an
-// absolute `exp` (ms). Verified with a constant-time compare; rejected if malformed/expired.
-function verifyTicket(ticket: string, secret: string): boolean {
+// absolute `exp` (ms) plus the portal user's identity (email/name), which the portal signs — so Cap trusts
+// it and records under the real person, not a shared account. Returns the payload, or null if invalid.
+interface TicketPayload {
+	exp: number;
+	email?: string;
+	name?: string;
+}
+function verifyTicket(ticket: string, secret: string): TicketPayload | null {
 	const dot = ticket.indexOf(".");
-	if (dot <= 0) return false;
+	if (dot <= 0) return null;
 	const body = ticket.slice(0, dot);
 	const sig = ticket.slice(dot + 1);
 	const expected = crypto
@@ -33,12 +39,13 @@ function verifyTicket(ticket: string, secret: string): boolean {
 		.digest("base64url");
 	const a = Buffer.from(sig);
 	const b = Buffer.from(expected);
-	if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
+	if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 	try {
 		const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-		return typeof payload.exp === "number" && Date.now() <= payload.exp;
+		if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
+		return payload as TicketPayload;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -51,12 +58,25 @@ export async function GET(request: Request) {
 
 	const url = new URL(request.url);
 	const ticket = url.searchParams.get("ticket") ?? "";
-	if (!verifyTicket(ticket, ssoSecret)) {
+	const payload = verifyTicket(ticket, ssoSecret);
+	if (!payload) {
 		return NextResponse.json(
 			{ error: "Invalid or expired ticket" },
 			{ status: 401 },
 		);
 	}
+	// Record under the real portal user (email the portal signed into the ticket) when it's an @oneaway.io
+	// address; otherwise fall back to the shared recorder identity.
+	const email =
+		typeof payload.email === "string" && /@oneaway\.io$/i.test(payload.email.trim())
+			? payload.email.trim().toLowerCase()
+			: RECORDER_EMAIL;
+	const displayName =
+		typeof payload.name === "string" && payload.name.trim()
+			? payload.name.trim()
+			: email === RECORDER_EMAIL
+				? "OneAway Tape"
+				: email.split("@")[0];
 
 	const [
 		{ db },
@@ -74,13 +94,14 @@ export async function GET(request: Request) {
 		import("next-auth/jwt"),
 	]);
 
-	// Idempotently ensure the shared recorder account exists. Mirrors DrizzleAdapter.createUser: user +
-	// default org + owner membership + activeOrganizationId. Safe under concurrency (re-checks in the txn).
+	// Idempotently ensure this user's Cap account exists (one per portal person). Mirrors
+	// DrizzleAdapter.createUser: user + default org + owner membership + activeOrganizationId. Safe under
+	// concurrency (re-checks in the txn). Records are then owned by the real person, so authorship is correct.
 	const database = db();
 	let [user] = await database
 		.select()
 		.from(users)
-		.where(eq(users.email, RECORDER_EMAIL))
+		.where(eq(users.email, email))
 		.limit(1);
 	if (!user) {
 		const userId = User.UserId.make(nanoId());
@@ -88,13 +109,13 @@ export async function GET(request: Request) {
 			const [again] = await tx
 				.select({ id: users.id })
 				.from(users)
-				.where(eq(users.email, RECORDER_EMAIL))
+				.where(eq(users.email, email))
 				.limit(1);
 			if (again) return;
 			await tx.insert(users).values({
 				id: userId,
-				email: RECORDER_EMAIL,
-				name: "OneAway Tape",
+				email,
+				name: displayName,
 				activeOrganizationId: Organisation.OrganisationId.make(""),
 			});
 			const orgId = Organisation.OrganisationId.make(nanoId());
@@ -115,7 +136,7 @@ export async function GET(request: Request) {
 		[user] = await database
 			.select()
 			.from(users)
-			.where(eq(users.email, RECORDER_EMAIL))
+			.where(eq(users.email, email))
 			.limit(1);
 	}
 	if (!user) {
@@ -130,7 +151,7 @@ export async function GET(request: Request) {
 		token: {
 			id: user.id,
 			sub: user.id,
-			name: user.name ?? "OneAway Tape",
+			name: user.name ?? displayName,
 			lastName: (user as { lastName?: string | null }).lastName ?? null,
 			email: user.email,
 			picture: (user as { image?: string | null }).image ?? null,

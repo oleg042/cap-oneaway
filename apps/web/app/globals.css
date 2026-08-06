@@ -4,12 +4,30 @@
 @import "@radix-ui/colors/gray-alpha.css";
 @import "@radix-ui/colors/gray-dark.css";
 @import "@radix-ui/colors/blue.css";
+/* OneAway: bring in orange so we can alias Cap's blue accent scale to OneAway orange (see :root below). */
+@import "@radix-ui/colors/orange.css";
+@import "@radix-ui/colors/orange-dark.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
+	/* OneAway: alias Cap's entire blue accent scale to OneAway orange, so every blue toggle pill, info box,
+	   badge and link (bg-blue-*, text-blue-*, var(--blue-*)) renders orange. --orange-* follows the theme
+	   (orange-dark.css sets dark values under .dark), so this stays theme-aware. */
+	--blue-1: var(--orange-1);
+	--blue-2: var(--orange-2);
+	--blue-3: var(--orange-3);
+	--blue-4: var(--orange-4);
+	--blue-5: var(--orange-5);
+	--blue-6: var(--orange-6);
+	--blue-7: var(--orange-7);
+	--blue-8: var(--orange-8);
+	--blue-9: var(--orange-9);
+	--blue-10: var(--orange-10);
+	--blue-11: var(--orange-11);
+	--blue-12: var(--orange-12);
 	/* OneAway "Tape" brand — orange accent (was Cap blue). Shared across light/dark so it stays theme-aware. */
 	--primary: #fd4f03;
 	--primary-2: #e24503;

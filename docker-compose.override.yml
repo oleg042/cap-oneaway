@@ -15,6 +15,12 @@
 
 services:
   cap-web:
+    # OneAway: build cap-web from the FORK source (Workers-AI transcription + our config) instead of the
+    # upstream ghcr image. `docker compose build cap-web` produces this tagged image.
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: cap-web-oneaway:local
     environment:
       CAP_AWS_ACCESS_KEY: ${CAP_AWS_ACCESS_KEY:-${MINIO_ROOT_USER:-cap-admin}}
       CAP_AWS_SECRET_KEY: ${CAP_AWS_SECRET_KEY:-${MINIO_ROOT_PASSWORD:-cap-minio-pwd-456}}
@@ -23,3 +29,13 @@ services:
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-${S3_PUBLIC_URL:-http://localhost:9000}}
       S3_INTERNAL_ENDPOINT: ${S3_INTERNAL_ENDPOINT:-http://minio:9000}
       S3_PATH_STYLE: ${S3_PATH_STYLE:-true}
+      # OneAway additions: extension-auth allowlist + Workers-AI transcription
+      CAP_CHROME_EXTENSION_ID: ${CAP_CHROME_EXTENSION_ID:-}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      CLOUDFLARE_AI_TOKEN: ${CLOUDFLARE_AI_TOKEN:-}
+      CLOUDFLARE_AI_MODEL: ${CLOUDFLARE_AI_MODEL:-@cf/openai/whisper-large-v3-turbo}
+
+  # OneAway: expose Cap's MySQL to the host so the portal's reconcile poller can read it (read-only use).
+  mysql:
+    ports:
+      - "3307:3306"

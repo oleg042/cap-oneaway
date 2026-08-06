@@ -104,7 +104,7 @@ export default async function DashboardLayout({
 					organizationData={organizationSelect}
 					activeOrganization={activeOrganization || null}
 					spacesData={spacesData}
-					initialTheme={theme as "light" | "dark"}
+					initialTheme={(tapeEmbed ? "dark" : theme) as "light" | "dark"}
 					initialSidebarCollapsed={sidebar === "true"}
 					anyNewNotifications={anyNewNotifications}
 					userPreferences={userPreferences}
