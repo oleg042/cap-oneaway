@@ -1,10 +1,4 @@
 import crypto, { timingSafeEqual } from "node:crypto";
-import { db } from "@cap/database";
-import { nanoId } from "@cap/database/helpers";
-import { organizationMembers, organizations, users } from "@cap/database/schema";
-import { Organisation, User } from "@cap/web-domain";
-import { eq } from "drizzle-orm";
-import { encode } from "next-auth/jwt";
 import { NextResponse } from "next/server";
 
 // OneAway portal SSO bridge. The OneAway portal (Clerk-authenticated) mints a short-lived HMAC ticket and
@@ -13,7 +7,12 @@ import { NextResponse } from "next/server";
 // and redirect. Net effect: being logged into the portal = being logged into Cap, with NO separate Cap
 // sign-in. Real per-recording authorship is tracked portal-side (the optimistic insert stamps the Clerk
 // user), so a shared Cap identity is fine and avoids per-user provisioning.
+//
+// The heavy Node deps (db/mysql2, next-auth/jwt, drizzle, schema) are imported lazily inside the handler:
+// this route is force-dynamic (runs only at request time), and top-level imports of them make Turbopack
+// fail the build ("Error evaluating Node.js code"). Lazy import keeps the module graph build-safe.
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const COOKIE_NAME = "next-auth.session-token";
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days, matching NextAuth's default
@@ -43,55 +42,6 @@ function verifyTicket(ticket: string, secret: string): boolean {
 	}
 }
 
-// Idempotently ensure the shared recorder account exists. Mirrors DrizzleAdapter.createUser: user + default
-// org + owner membership + activeOrganizationId. Safe under concurrency (re-checks inside the transaction).
-async function ensureRecorderUser() {
-	const database = db();
-	const [existing] = await database
-		.select()
-		.from(users)
-		.where(eq(users.email, RECORDER_EMAIL))
-		.limit(1);
-	if (existing) return existing;
-
-	const userId = User.UserId.make(nanoId());
-	await database.transaction(async (tx) => {
-		const [again] = await tx
-			.select({ id: users.id })
-			.from(users)
-			.where(eq(users.email, RECORDER_EMAIL))
-			.limit(1);
-		if (again) return;
-		await tx.insert(users).values({
-			id: userId,
-			email: RECORDER_EMAIL,
-			name: "OneAway Tape",
-			activeOrganizationId: Organisation.OrganisationId.make(""),
-		});
-		const orgId = Organisation.OrganisationId.make(nanoId());
-		await tx
-			.insert(organizations)
-			.values({ id: orgId, ownerId: userId, name: "OneAway" });
-		await tx.insert(organizationMembers).values({
-			id: nanoId(),
-			organizationId: orgId,
-			userId,
-			role: "owner",
-		});
-		await tx
-			.update(users)
-			.set({ activeOrganizationId: orgId, defaultOrgId: orgId })
-			.where(eq(users.id, userId));
-	});
-
-	const [created] = await database
-		.select()
-		.from(users)
-		.where(eq(users.email, RECORDER_EMAIL))
-		.limit(1);
-	return created;
-}
-
 export async function GET(request: Request) {
 	const ssoSecret = process.env.PORTAL_SSO_SECRET;
 	const authSecret = process.env.NEXTAUTH_SECRET;
@@ -108,7 +58,66 @@ export async function GET(request: Request) {
 		);
 	}
 
-	const user = await ensureRecorderUser();
+	const [
+		{ db },
+		{ nanoId },
+		{ organizationMembers, organizations, users },
+		{ Organisation, User },
+		{ eq },
+		{ encode },
+	] = await Promise.all([
+		import("@cap/database"),
+		import("@cap/database/helpers"),
+		import("@cap/database/schema"),
+		import("@cap/web-domain"),
+		import("drizzle-orm"),
+		import("next-auth/jwt"),
+	]);
+
+	// Idempotently ensure the shared recorder account exists. Mirrors DrizzleAdapter.createUser: user +
+	// default org + owner membership + activeOrganizationId. Safe under concurrency (re-checks in the txn).
+	const database = db();
+	let [user] = await database
+		.select()
+		.from(users)
+		.where(eq(users.email, RECORDER_EMAIL))
+		.limit(1);
+	if (!user) {
+		const userId = User.UserId.make(nanoId());
+		await database.transaction(async (tx) => {
+			const [again] = await tx
+				.select({ id: users.id })
+				.from(users)
+				.where(eq(users.email, RECORDER_EMAIL))
+				.limit(1);
+			if (again) return;
+			await tx.insert(users).values({
+				id: userId,
+				email: RECORDER_EMAIL,
+				name: "OneAway Tape",
+				activeOrganizationId: Organisation.OrganisationId.make(""),
+			});
+			const orgId = Organisation.OrganisationId.make(nanoId());
+			await tx
+				.insert(organizations)
+				.values({ id: orgId, ownerId: userId, name: "OneAway" });
+			await tx.insert(organizationMembers).values({
+				id: nanoId(),
+				organizationId: orgId,
+				userId,
+				role: "owner",
+			});
+			await tx
+				.update(users)
+				.set({ activeOrganizationId: orgId, defaultOrgId: orgId })
+				.where(eq(users.id, userId));
+		});
+		[user] = await database
+			.select()
+			.from(users)
+			.where(eq(users.email, RECORDER_EMAIL))
+			.limit(1);
+	}
 	if (!user) {
 		return NextResponse.json(
 			{ error: "Could not provision recorder account" },
@@ -125,7 +134,8 @@ export async function GET(request: Request) {
 			lastName: (user as { lastName?: string | null }).lastName ?? null,
 			email: user.email,
 			picture: (user as { image?: string | null }).image ?? null,
-			sessionVersion: (user as { authSessionVersion?: number }).authSessionVersion ?? 0,
+			sessionVersion:
+				(user as { authSessionVersion?: number }).authSessionVersion ?? 0,
 		},
 		secret: authSecret,
 		maxAge: SESSION_MAX_AGE,
