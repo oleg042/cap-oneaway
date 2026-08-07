@@ -29,21 +29,18 @@ export function EmbedRecorder() {
 	}, []);
 
 	return (
-		<div className="dark min-h-screen w-full flex flex-col items-center justify-center gap-6 px-6 text-center bg-gray-1">
-			<div className="flex items-center gap-2">
+		<div className="dark relative min-h-screen w-full bg-gray-1">
+			{/* Browser is the only way to record here, so there's no "Record in Browser" step — the launcher
+			    opens straight away and fills the window. This spinner is just the brief loading state, covered
+			    the moment the controls appear. */}
+			<div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
 				<span
-					className="inline-block w-3 h-3 rounded-full"
-					style={{ background: "#FD4F03" }}
+					className="inline-block h-7 w-7 animate-spin rounded-full border-2 border-gray-6"
+					style={{ borderTopColor: "#FD4F03" }}
 					aria-hidden="true"
 				/>
-				<span className="text-[15px] font-semibold lowercase tracking-tight text-gray-12">
-					tape
-				</span>
-				<span className="text-[12px] text-gray-9">by OneAway</span>
+				<span className="text-[13px] text-gray-9">Starting recorder…</span>
 			</div>
-			<p className="max-w-sm text-sm text-gray-10">
-				Record your screen and voice — pick a screen, hit record, and go.
-			</p>
 			<WebRecorderDialog
 				embed
 				onRecorded={() => {

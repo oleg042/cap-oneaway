@@ -245,6 +245,9 @@ export const WebRecorderDialog = ({
 	});
 
 	const handleOpenChange = (next: boolean) => {
+		// The portal embed recorder IS the whole page — never let an outside-click or Esc close it (that would
+		// drop the user to a blank loading screen with no way back).
+		if (embed && !next) return;
 		if (next && supportCheckCompleted && !isBrowserSupported) {
 			toast.error(
 				"This browser isn't compatible with the Tape recorder. We recommend Google Chrome or other Chromium-based browsers.",
@@ -359,18 +362,32 @@ export const WebRecorderDialog = ({
 	return (
 		<>
 			<Dialog open={open} onOpenChange={handleOpenChange}>
-				<DialogTrigger asChild>
-					<Button variant="blue" size="sm" className="flex items-center gap-2">
-						<MonitorIcon className="size-3.5" />
-						Record in Browser
-					</Button>
-				</DialogTrigger>
+				{/* No launch button in the portal embed — the dialog auto-opens (browser is the only option). */}
+				{!embed && (
+					<DialogTrigger asChild>
+						<Button
+							variant="blue"
+							size="sm"
+							className="flex items-center gap-2"
+						>
+							<MonitorIcon className="size-3.5" />
+							Record in Browser
+						</Button>
+					</DialogTrigger>
+				)}
 				<DialogContent
 					ref={dialogContentRef}
-					// !max-w-[760px] overrides the base DialogContent's `max-w-md` (448px), which would
-					// otherwise cram the two columns. (Can't use an inline style — the base hardcodes its
-					// centering transform in `style`, and props.style would replace it.)
-					className={`${showPreviewColumn ? "w-[760px] !max-w-[760px]" : "w-[300px]"} border-none bg-transparent p-0 [&>button]:hidden`}
+					// !max-w-* overrides the base DialogContent's `max-w-md` (448px), which would otherwise cram
+					// the two columns. In the portal embed (full-window recorder) the two-column view fills the
+					// window; the in-dashboard modal stays compact. (Can't use an inline style — the base
+					// hardcodes its centering transform in `style`, and props.style would replace it.)
+					className={`${
+						embed && showPreviewColumn
+							? "w-[94vw] !max-w-[1080px]"
+							: showPreviewColumn
+								? "w-[760px] !max-w-[760px]"
+								: "w-[300px]"
+					} border-none bg-transparent p-0 [&>button]:hidden`}
 					onPointerDownOutside={handlePointerDownOutside}
 					onFocusOutside={handleFocusOutside}
 					onInteractOutside={handleInteractOutside}
