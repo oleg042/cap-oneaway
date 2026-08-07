@@ -27,7 +27,6 @@ import { RecordingButton } from "./RecordingButton";
 import { RecordingCapToggle } from "./RecordingCapToggle";
 import {
 	type RecordingMode,
-	RecordingModeSelector,
 } from "./RecordingModeSelector";
 import { RememberDevicesToggle } from "./RememberDevicesToggle";
 import { SystemAudioToggle } from "./SystemAudioToggle";
@@ -421,11 +420,10 @@ export const WebRecorderDialog = ({
 												: "contents"
 										}
 									>
-										<RecordingModeSelector
-											mode={recordingMode}
-											disabled={isBusy}
-											onModeChange={setRecordingMode}
-										/>
+										{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
+										    getDisplayMedia dialog already asks screen vs window vs tab at Start, so pre-picking
+										    here was redundant. Recording is always screen (default 'fullscreen') + the optional
+										    camera bubble; webcam-only mode was intentionally dropped for the screen-first tool. */}
 										{screenCaptureWarning && (
 											<div className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
 												{screenCaptureWarning}
