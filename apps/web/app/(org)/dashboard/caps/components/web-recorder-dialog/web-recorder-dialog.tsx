@@ -29,8 +29,7 @@ import {
 	type RecordingMode,
 	RecordingModeSelector,
 } from "./RecordingModeSelector";
-import { SettingsButton } from "./SettingsButton";
-import { SettingsPanel } from "./SettingsPanel";
+import { RememberDevicesToggle } from "./RememberDevicesToggle";
 import { SystemAudioToggle } from "./SystemAudioToggle";
 import { useCameraDevices } from "./useCameraDevices";
 import { useDevicePreferences } from "./useDevicePreferences";
@@ -71,7 +70,6 @@ export const WebRecorderDialog = ({
 	useEffect(() => {
 		if (embed) setOpen(true);
 	}, [embed]);
-	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [howItWorksOpen, setHowItWorksOpen] = useState(false);
 	// Off by default → the 20-min auto-stop guardrail is active. Deliberately re-defaults off each time the
 	// dialog opens (reset in handleOpenChange) so lifting the cap is always a conscious per-recording choice.
@@ -269,7 +267,6 @@ export const WebRecorderDialog = ({
 			void resetState();
 			setSelectedCameraId(null);
 			setRecordingMode("fullscreen");
-			setSettingsOpen(false);
 			setHowItWorksOpen(false);
 			setOverrideDefaultCap(false);
 		}
@@ -297,14 +294,8 @@ export const WebRecorderDialog = ({
 		}
 	};
 
-	const handleSettingsOpen = () => {
-		setSettingsOpen(true);
-		setHowItWorksOpen(false);
-	};
-
 	const handleHowItWorksOpen = () => {
 		setHowItWorksOpen(true);
-		setSettingsOpen(false);
 	};
 
 	const showInProgressBar = isRecording || isBusy || phase === "error";
@@ -408,16 +399,6 @@ export const WebRecorderDialog = ({
 								exit="exit"
 								className="relative flex justify-center flex-col p-[1rem] pt-[2rem] gap-[0.75rem] text-[0.875rem] font-[400] text-[--text-primary] bg-gray-2 rounded-lg min-h-[350px]"
 							>
-								<SettingsButton
-									visible={!settingsOpen}
-									onClick={handleSettingsOpen}
-								/>
-								<SettingsPanel
-									open={settingsOpen}
-									rememberDevices={rememberDevices}
-									onClose={() => setSettingsOpen(false)}
-									onRememberDevicesChange={handleRememberDevicesChange}
-								/>
 								<HowItWorksPanel
 									open={howItWorksOpen}
 									onClose={() => setHowItWorksOpen(false)}
@@ -492,6 +473,11 @@ export const WebRecorderDialog = ({
 											overridden={overrideDefaultCap}
 											disabled={isBusy || isRecording}
 											onToggle={setOverrideDefaultCap}
+										/>
+										<RememberDevicesToggle
+											enabled={rememberDevices}
+											disabled={isBusy || isRecording}
+											onToggle={handleRememberDevicesChange}
 										/>
 										<RecordingButton
 											isRecording={isRecording}

@@ -18,7 +18,7 @@ export const useDevicePreferences = ({
 	availableCameras,
 	availableMics,
 }: DevicePreferencesOptions) => {
-	const [rememberDevices, setRememberDevices] = useState(false);
+	const [rememberDevices, setRememberDevices] = useState(true); // default ON — auto-restore last cam/mic
 	const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
 	const [selectedMicId, setSelectedMicId] = useState<string | null>(null);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
@@ -27,9 +27,10 @@ export const useDevicePreferences = ({
 		if (typeof window === "undefined") return;
 
 		try {
+			// Default ON: only an explicit opt-out ("false") turns it off; a first-time user (null) stays ON.
 			const storedRemember = window.localStorage.getItem(REMEMBER_DEVICES_KEY);
-			if (storedRemember === "true") {
-				setRememberDevices(true);
+			if (storedRemember === "false") {
+				setRememberDevices(false);
 			}
 			const storedSystemAudio = window.localStorage.getItem(
 				SYSTEM_AUDIO_ENABLED_KEY,
