@@ -39,19 +39,19 @@ export async function proxy(request: NextRequest) {
 		return response;
 	}
 
-	// The in-browser recorder embed is intentionally framed cross-origin by the OneAway portal (it grants
-	// camera/mic/display-capture), so lock down WHO may frame it to the portal origin(s). Env-gated: when
-	// PORTAL_FRAME_ANCESTORS is unset we emit no restriction (a wrong value would break the portal iframe),
-	// so this hardens only once the exact portal origins are configured.
+	// The recorder is launched by the OneAway portal (which needs camera/mic/display-capture), so lock down
+	// WHO may frame it. Fail CLOSED: with the portal origin(s) configured, allow self + those; otherwise allow
+	// only same-origin — never emit no restriction, or an unset env leaves the recorder framable by any site
+	// (clickjacking). The recorder now opens as a top-level tab, so 'self' doesn't break the flow.
 	if (path.startsWith("/dashboard/caps/record")) {
 		const response = NextResponse.next();
 		const ancestors = process.env.PORTAL_FRAME_ANCESTORS?.trim();
-		if (ancestors) {
-			response.headers.set(
-				"Content-Security-Policy",
-				`frame-ancestors 'self' ${ancestors}`,
-			);
-		}
+		response.headers.set(
+			"Content-Security-Policy",
+			ancestors
+				? `frame-ancestors 'self' ${ancestors}`
+				: "frame-ancestors 'self'",
+		);
 		return response;
 	}
 

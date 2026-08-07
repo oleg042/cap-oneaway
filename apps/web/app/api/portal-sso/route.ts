@@ -15,10 +15,28 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const COOKIE_NAME = "next-auth.session-token";
-const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days, matching NextAuth's default
+// SSO logins are ephemeral hops (you always enter Cap via a fresh portal ticket), so the session cookie
+// doesn't need NextAuth's 30-day default. A shorter life bounds how long a minted — and, for the edit hop,
+// possibly cross-identity — Cap session lingers in a browser. 24h covers any single record/edit session;
+// re-entry re-hops seamlessly from the portal.
+const SESSION_MAX_AGE = 24 * 60 * 60; // 24h
 const RECORDER_EMAIL = (
 	process.env.TAPE_RECORDER_EMAIL || "tape-recorder@oneaway.io"
 ).toLowerCase();
+
+// Single-use ticket guard: reject a ticket whose jti we've already consumed, so a captured SSO URL can't be
+// replayed within its short TTL. In-memory + per-instance (cap-web runs as a long-lived Node container, so
+// module state persists across requests). A horizontally-scaled deploy would need a shared store — the short
+// ticket TTL is the cross-instance backstop. Legacy tickets without a jti still work (TTL-bounded only).
+const consumedJtis = new Map<string, number>(); // jti -> ticket exp (ms)
+function consumeTicket(jti: string | undefined, exp: number): boolean {
+	const now = Date.now();
+	for (const [k, e] of consumedJtis) if (e <= now) consumedJtis.delete(k); // prune expired
+	if (!jti) return true;
+	if (consumedJtis.has(jti)) return false; // replay
+	consumedJtis.set(jti, exp);
+	return true;
+}
 
 // Ticket = base64url(payloadJSON).base64url(hmacSHA256(payload, PORTAL_SSO_SECRET)). Payload carries an
 // absolute `exp` (ms) plus the portal user's identity (email/name), which the portal signs — so Cap trusts
@@ -27,6 +45,7 @@ interface TicketPayload {
 	exp: number;
 	email?: string;
 	name?: string;
+	jti?: string; // random per-ticket id → single-use replay guard
 }
 function verifyTicket(ticket: string, secret: string): TicketPayload | null {
 	const dot = ticket.indexOf(".");
@@ -42,7 +61,8 @@ function verifyTicket(ticket: string, secret: string): TicketPayload | null {
 	if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 	try {
 		const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-		if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
+		if (typeof payload.exp !== "number" || Date.now() > payload.exp)
+			return null;
 		return payload as TicketPayload;
 	} catch {
 		return null;
@@ -65,10 +85,15 @@ export async function GET(request: Request) {
 			{ status: 401 },
 		);
 	}
+	// Reject a replayed ticket (same jti seen before, within its TTL).
+	if (!consumeTicket(payload.jti, payload.exp)) {
+		return NextResponse.json({ error: "Ticket already used" }, { status: 401 });
+	}
 	// Record under the real portal user (email the portal signed into the ticket) when it's an @oneaway.io
 	// address; otherwise fall back to the shared recorder identity.
 	const email =
-		typeof payload.email === "string" && /@oneaway\.io$/i.test(payload.email.trim())
+		typeof payload.email === "string" &&
+		/@oneaway\.io$/i.test(payload.email.trim())
 			? payload.email.trim().toLowerCase()
 			: RECORDER_EMAIL;
 	const displayName =
@@ -162,16 +187,22 @@ export async function GET(request: Request) {
 		maxAge: SESSION_MAX_AGE,
 	});
 
-	// Only allow same-origin relative redirects to avoid an open redirect.
-	const requested = url.searchParams.get("redirect") ?? "/dashboard";
-	const safe =
-		requested.startsWith("/") && !requested.startsWith("//")
-			? requested
-			: "/dashboard";
-
 	// Behind Railway's proxy, request.url carries the container's internal host (0.0.0.0:3000), so redirect
 	// off the public WEB_URL instead — otherwise the browser follows the 307 to an unresolvable host.
 	const base = process.env.WEB_URL || process.env.NEXTAUTH_URL || url.origin;
+	// Same-origin redirects ONLY, to avoid an open redirect. Resolve the requested target against base and
+	// compare origins — a string prefix check (startsWith("/") && !"//") misses backslash tricks:
+	// "/\evil.com" normalizes to "//evil.com" → host evil.com under WHATWG URL parsing.
+	const requested = url.searchParams.get("redirect") ?? "/dashboard";
+	let safe = "/dashboard";
+	try {
+		const resolved = new URL(requested, base);
+		if (resolved.origin === new URL(base).origin) {
+			safe = resolved.pathname + resolved.search + resolved.hash;
+		}
+	} catch {
+		/* malformed redirect → default */
+	}
 	const res = NextResponse.redirect(new URL(safe, base));
 	res.cookies.set(COOKIE_NAME, token, {
 		httpOnly: true,
