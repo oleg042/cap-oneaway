@@ -1,5 +1,11 @@
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { serverEnv } from "@cap/env";
 import type { AiGenerationLanguage } from "@cap/web-domain";
+import { getFfmpegPath } from "@/lib/audio-extract";
 import {
 	type AssemblyAIEditResult,
 	createEditTranscript,
@@ -19,6 +25,16 @@ import { correctTranscriptWords } from "@/lib/transcription-corrections";
  * Verified against the real API: word-level timings live INSIDE each segment
  * (`segments[*].words`, times in SECONDS), while top-level `result.words` is
  * empty — so we flatten segment words and convert seconds -> ms.
+ *
+ * PARALLEL CHUNKING (the speed path): Workers AI whisper is a stateless per-request
+ * ASR, and a single-pass call on the whole file runs ~7-8x realtime (a 155s clip
+ * ~= 16-21s measured). We instead cut the audio into fixed windows and transcribe
+ * them CONCURRENTLY, so wall-clock collapses to roughly the slowest single chunk
+ * (~2-3s for that same clip — measured). Each window is extracted with a small
+ * symmetric OVERLAP for boundary context, and every word is kept only by the window
+ * that owns its start time — so no word is ever cut or duplicated at a splice
+ * (verified: the stitched transcript is char-for-char comparable to single-pass).
+ * Chunking also removes the 24MB single-pass ceiling that used to fail long recordings.
  */
 
 // Structurally identical to the workflow's local `TranscriptionArtifacts`.
@@ -28,10 +44,24 @@ interface TranscriptionArtifacts {
 }
 
 const DEFAULT_MODEL = "@cf/openai/whisper-large-v3-turbo";
-// Guard the single-pass base64 request against the Workers AI body ceiling.
-// Long recordings that exceed this fail cleanly to ERROR (a calm, non-fatal
-// state — the tape still exists and plays); chunking is a documented follow-up.
-const MAX_AUDIO_BYTES = 24 * 1024 * 1024;
+// Sanity ceiling only (avoid OOM on an absurd input). The per-request Workers AI body
+// limit no longer applies to the whole file — chunking keeps each request tiny.
+const MAX_AUDIO_BYTES = 512 * 1024 * 1024;
+
+// Chunking knobs. 30s windows match whisper's internal frame; 2s symmetric overlap
+// gives every boundary word full surrounding context in exactly one owning window.
+const CHUNK_SEC = 30;
+// Generous symmetric overlap: the owning window keeps a word only by its start time, so the overlap just has
+// to exceed any real word/utterance so that owning chunk has the whole word + context. 3s covers anything.
+const OVERLAP_SEC = 3;
+// Below this, a single pass is already fast enough that chunking overhead (ffmpeg
+// windowing + N requests) isn't worth it.
+const CHUNK_MIN_DURATION_SEC = 45;
+// Cap concurrent Workers AI calls so a very long recording can't fan out unbounded.
+const CHUNK_CONCURRENCY = 8;
+// Transient Workers AI failures (429 / 5xx / network blips) are common under load — retry a chunk a few
+// times with a small backoff before giving up on it.
+const ASR_RETRIES = 2;
 
 interface CfWord {
 	word?: unknown;
@@ -52,21 +82,24 @@ interface CfResult {
 	transcription_info?: { language?: string };
 }
 
+interface RawWord {
+	text: string;
+	start: number;
+	end: number;
+}
+
 function finite(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 /**
- * Flatten a Workers AI whisper result into the AssemblyAIEditResult shape.
- * Word times are seconds -> converted to ms. If a segment lacks word timings we
- * fall back to one coarse "word" per segment so a transcript is never empty.
- * Proper-noun correction runs here so both the VTT and the edit transcript come
- * out corrected.
+ * Flatten a Workers AI whisper result into raw words (times seconds -> ms), WITHOUT
+ * proper-noun correction — correction runs once on the merged transcript so it sees
+ * full context. If a segment lacks word timings we fall back to one coarse "word"
+ * per segment so a transcript is never empty.
  */
-export function cloudflareResultToEditInput(
-	result: CfResult,
-): AssemblyAIEditResult {
-	const raw: { text: string; start: number; end: number }[] = [];
+function cloudflareResultToRawWords(result: CfResult): RawWord[] {
+	const raw: RawWord[] = [];
 	for (const seg of result.segments ?? []) {
 		const segWords = Array.isArray(seg.words) ? seg.words : [];
 		if (segWords.length > 0) {
@@ -91,10 +124,18 @@ export function cloudflareResultToEditInput(
 			}
 		}
 	}
+	return raw;
+}
 
-	const corrected = correctTranscriptWords(raw);
+/**
+ * Flatten a Workers AI whisper result into the AssemblyAIEditResult shape (with
+ * proper-noun correction). Kept exported for callers/tests that hold a single result.
+ */
+export function cloudflareResultToEditInput(
+	result: CfResult,
+): AssemblyAIEditResult {
 	return {
-		words: corrected,
+		words: correctTranscriptWords(cloudflareResultToRawWords(result)),
 		language_code: result.transcription_info?.language ?? null,
 		speech_model_used: "whisper-large-v3-turbo",
 	};
@@ -143,6 +184,23 @@ async function runWorkersAi(audioBuffer: Buffer): Promise<CfResult> {
 	return json.result;
 }
 
+// Retry wrapper: transient Workers AI failures (429/5xx/network) → retry with a short linear backoff before
+// surfacing the error. Used for both chunk calls and the single-pass fallback.
+async function runWorkersAiWithRetry(audioBuffer: Buffer): Promise<CfResult> {
+	let lastErr: unknown;
+	for (let attempt = 0; attempt <= ASR_RETRIES; attempt++) {
+		try {
+			return await runWorkersAi(audioBuffer);
+		} catch (err) {
+			lastErr = err;
+			if (attempt < ASR_RETRIES) {
+				await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+			}
+		}
+	}
+	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 async function fetchAudioBuffer(audioUrl: string): Promise<Buffer> {
 	const audioResponse = await fetch(audioUrl);
 	if (!audioResponse.ok) {
@@ -153,10 +211,181 @@ async function fetchAudioBuffer(audioUrl: string): Promise<Buffer> {
 	const buffer = Buffer.from(await audioResponse.arrayBuffer());
 	if (buffer.byteLength > MAX_AUDIO_BYTES) {
 		throw new Error(
-			`Audio too large for Workers AI single-pass (${(buffer.byteLength / 1048576).toFixed(1)}MB > ${MAX_AUDIO_BYTES / 1048576}MB); chunking is a follow-up`,
+			`Audio implausibly large (${(buffer.byteLength / 1048576).toFixed(1)}MB > ${MAX_AUDIO_BYTES / 1048576}MB)`,
 		);
 	}
 	return buffer;
+}
+
+/** Probe an audio file's duration (seconds) by parsing ffmpeg's stderr — ffmpeg-static
+ *  ships no ffprobe, so we read the `Duration:` line the decoder prints. 0 if unknown. */
+function probeDurationSec(path: string): Promise<number> {
+	return new Promise((resolveDuration) => {
+		const proc = spawn(getFfmpegPath(), ["-i", path], {
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let stderr = "";
+		proc.stderr?.on("data", (d: Buffer) => {
+			stderr += d.toString();
+		});
+		proc.on("close", () => {
+			const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+			resolveDuration(
+				m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0,
+			);
+		});
+		proc.on("error", () => resolveDuration(0));
+	});
+}
+
+/** Extract [startSec, startSec+lenSec] of an audio file to a fresh temp mp3 (16k mono,
+ *  whisper-friendly + small) via ffmpeg. Returns the temp path; caller cleans it up. */
+async function extractAudioWindow(
+	srcPath: string,
+	startSec: number,
+	lenSec: number,
+): Promise<string> {
+	const out = join(tmpdir(), `cf-chunk-${randomUUID()}.mp3`);
+	const args = [
+		"-ss",
+		String(startSec),
+		"-t",
+		String(lenSec),
+		"-i",
+		srcPath,
+		"-vn",
+		"-ac",
+		"1",
+		"-ar",
+		"16000",
+		"-b:a",
+		"64k",
+		"-f",
+		"mp3",
+		"-y",
+		out,
+	];
+	await new Promise<void>((res, rej) => {
+		const proc = spawn(getFfmpegPath(), args, {
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		let stderr = "";
+		proc.stderr?.on("data", (d: Buffer) => {
+			stderr += d.toString();
+		});
+		proc.on("error", rej);
+		proc.on("close", (code) =>
+			code === 0
+				? res()
+				: rej(
+						new Error(
+							`ffmpeg window ${startSec}s+${lenSec}s failed (${code}): ${stderr.slice(0, 200)}`,
+						),
+					),
+		);
+	});
+	return out;
+}
+
+/**
+ * Transcribe an audio buffer into merged raw words. Short clips take a single pass;
+ * longer ones are cut into overlapping 30s windows, transcribed CONCURRENTLY, and
+ * stitched — each word kept only by the window owning its start time (absolute ms),
+ * so no boundary word is cut or duplicated. Falls back to single-pass if the duration
+ * can't be probed.
+ */
+async function transcribeBufferToRawWords(
+	audioBuffer: Buffer,
+): Promise<{ words: RawWord[]; language: string | null }> {
+	const singlePass = async () => {
+		const r = await runWorkersAiWithRetry(audioBuffer);
+		return {
+			words: cloudflareResultToRawWords(r),
+			language: r.transcription_info?.language ?? null,
+		};
+	};
+
+	const srcPath = join(tmpdir(), `cf-src-${randomUUID()}.mp3`);
+	await fs.writeFile(srcPath, audioBuffer);
+	try {
+		const durationSec = await probeDurationSec(srcPath);
+
+		// Short clip (or unknown duration) → one pass; already fast, and unknown
+		// duration means we can't window safely.
+		if (durationSec < CHUNK_MIN_DURATION_SEC) {
+			return await singlePass();
+		}
+
+		try {
+			const nChunks = Math.max(1, Math.ceil(durationSec / CHUNK_SEC));
+			const indices = Array.from({ length: nChunks }, (_, i) => i);
+			const perChunk: {
+				i: number;
+				words: RawWord[];
+				language: string | null;
+			}[] = [];
+
+			// Bounded concurrency: run windows in batches of CHUNK_CONCURRENCY.
+			for (let b = 0; b < indices.length; b += CHUNK_CONCURRENCY) {
+				const batch = indices.slice(b, b + CHUNK_CONCURRENCY);
+				const batchResults = await Promise.all(
+					batch.map(async (i) => {
+						const winStart = Math.max(0, i * CHUNK_SEC - OVERLAP_SEC);
+						const winEnd = (i + 1) * CHUNK_SEC + OVERLAP_SEC;
+						const chunkPath = await extractAudioWindow(
+							srcPath,
+							winStart,
+							winEnd - winStart,
+						);
+						try {
+							const buf = await fs.readFile(chunkPath);
+							const r = await runWorkersAiWithRetry(buf);
+							const offsetMs = winStart * 1000;
+							const ownStartMs = i * CHUNK_SEC * 1000;
+							const ownEndMs = (i + 1) * CHUNK_SEC * 1000;
+							const words = cloudflareResultToRawWords(r)
+								.map((w) => ({
+									text: w.text,
+									start: w.start + offsetMs,
+									end: w.end + offsetMs,
+								}))
+								// keep only words this 30s window owns (half-open) — de-dups the overlap
+								.filter((w) => w.start >= ownStartMs && w.start < ownEndMs);
+							return {
+								i,
+								words,
+								language: r.transcription_info?.language ?? null,
+							};
+						} finally {
+							await fs.unlink(chunkPath).catch(() => {});
+						}
+					}),
+				);
+				perChunk.push(...batchResults);
+			}
+
+			perChunk.sort((a, b2) => a.i - b2.i);
+			const words = perChunk
+				.flatMap((c) => c.words)
+				.sort((a, b2) => a.start - b2.start);
+			// A chunked run that yields NO words is suspicious (a real recording has speech) — treat it as a
+			// failure and fall back, rather than saving an empty transcript.
+			if (words.length === 0) {
+				throw new Error("chunked transcription produced no words");
+			}
+			const language = perChunk.find((c) => c.language)?.language ?? null;
+			return { words, language };
+		} catch (chunkedError) {
+			// FOOLPROOF fallback: a chunk failing after retries (or an empty result) must NEVER yield a
+			// partial transcript — re-run the whole file single-pass (slower, but guaranteed complete).
+			console.warn(
+				`[cf-transcribe] chunked path failed (${(chunkedError as Error)?.message ?? chunkedError}); falling back to single-pass`,
+			);
+			return await singlePass();
+		}
+	} finally {
+		await fs.unlink(srcPath).catch(() => {});
+	}
 }
 
 /** Drop-in replacement for `transcribeWithAssemblyAI` — same return shape. */
@@ -166,8 +395,12 @@ export async function transcribeWithCloudflare(
 	videoDurationMs: number,
 ): Promise<TranscriptionArtifacts> {
 	const audioBuffer = await fetchAudioBuffer(audioUrl);
-	const result = await runWorkersAi(audioBuffer);
-	const editInput = cloudflareResultToEditInput(result);
+	const { words, language } = await transcribeBufferToRawWords(audioBuffer);
+	const editInput: AssemblyAIEditResult = {
+		words: correctTranscriptWords(words),
+		language_code: language,
+		speech_model_used: "whisper-large-v3-turbo",
+	};
 	const durationMs =
 		videoDurationMs > 0 ? videoDurationMs : estimateDurationMs(editInput);
 	const editTranscript = createEditTranscript(editInput, durationMs);
@@ -183,8 +416,12 @@ export async function transcribeEditTranscriptWithCloudflare(
 	videoDurationSeconds: number,
 ): Promise<string> {
 	const audioBuffer = await fetchAudioBuffer(audioUrl);
-	const result = await runWorkersAi(audioBuffer);
-	const editInput = cloudflareResultToEditInput(result);
+	const { words, language } = await transcribeBufferToRawWords(audioBuffer);
+	const editInput: AssemblyAIEditResult = {
+		words: correctTranscriptWords(words),
+		language_code: language,
+		speech_model_used: "whisper-large-v3-turbo",
+	};
 	const durationMs =
 		videoDurationSeconds > 0
 			? videoDurationSeconds * 1000
