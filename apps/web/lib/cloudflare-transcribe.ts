@@ -305,18 +305,18 @@ async function transcribeBufferToRawWords(
 		};
 	};
 
+	// Fast chunked path. ANY failure inside it — ffmpeg unavailable, temp write, duration probe, a chunk
+	// failing after retries, or an empty stitched result — leaves `chunked` null and we fall through to the
+	// guaranteed-complete single pass (which needs neither ffmpeg nor a temp file). So the chunked path can
+	// never turn a transcribable recording into an ERROR.
+	let chunked: { words: RawWord[]; language: string | null } | null = null;
 	const srcPath = join(tmpdir(), `cf-src-${randomUUID()}.mp3`);
-	await fs.writeFile(srcPath, audioBuffer);
 	try {
+		await fs.writeFile(srcPath, audioBuffer);
 		const durationSec = await probeDurationSec(srcPath);
 
-		// Short clip (or unknown duration) → one pass; already fast, and unknown
-		// duration means we can't window safely.
-		if (durationSec < CHUNK_MIN_DURATION_SEC) {
-			return await singlePass();
-		}
-
-		try {
+		// Only worth chunking a clip long enough to benefit; short/unknown-duration falls through to one pass.
+		if (durationSec >= CHUNK_MIN_DURATION_SEC) {
 			const nChunks = Math.max(1, Math.ceil(durationSec / CHUNK_SEC));
 			const indices = Array.from({ length: nChunks }, (_, i) => i);
 			const perChunk: {
@@ -368,24 +368,28 @@ async function transcribeBufferToRawWords(
 			const words = perChunk
 				.flatMap((c) => c.words)
 				.sort((a, b2) => a.start - b2.start);
-			// A chunked run that yields NO words is suspicious (a real recording has speech) — treat it as a
-			// failure and fall back, rather than saving an empty transcript.
-			if (words.length === 0) {
-				throw new Error("chunked transcription produced no words");
+			// Only accept a NON-empty stitched result; an empty one is suspicious (a real recording has
+			// speech), so leave `chunked` null and fall through to single-pass rather than save an empty one.
+			if (words.length > 0) {
+				chunked = {
+					words,
+					language: perChunk.find((c) => c.language)?.language ?? null,
+				};
 			}
-			const language = perChunk.find((c) => c.language)?.language ?? null;
-			return { words, language };
-		} catch (chunkedError) {
-			// FOOLPROOF fallback: a chunk failing after retries (or an empty result) must NEVER yield a
-			// partial transcript — re-run the whole file single-pass (slower, but guaranteed complete).
-			console.warn(
-				`[cf-transcribe] chunked path failed (${(chunkedError as Error)?.message ?? chunkedError}); falling back to single-pass`,
-			);
-			return await singlePass();
 		}
+	} catch (chunkedError) {
+		// FOOLPROOF fallback: any failure in the chunked fast-path — pre-flight ffmpeg/temp-write, the
+		// duration probe, a chunk after retries, or an empty result — must NEVER yield a partial or failed
+		// transcript. Leave `chunked` null and fall through to the guaranteed-complete single pass below.
+		console.warn(
+			`[cf-transcribe] chunked path failed (${(chunkedError as Error)?.message ?? chunkedError}); falling back to single-pass`,
+		);
+		chunked = null;
 	} finally {
 		await fs.unlink(srcPath).catch(() => {});
 	}
+
+	return chunked ?? (await singlePass());
 }
 
 /** Drop-in replacement for `transcribeWithAssemblyAI` — same return shape. */
