@@ -12,7 +12,7 @@ import { MonitorIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDashboardContext } from "../../../Contexts";
-import { CameraLaunchPositioner } from "./CameraLaunchPositioner";
+import { CameraPreviewArea } from "./CameraPreviewArea";
 import {
 	CameraPreviewWindow,
 	type CameraPreviewWindowHandle,
@@ -300,22 +300,27 @@ export const WebRecorderDialog = ({
 
 	const showInProgressBar = isRecording || isBusy || phase === "error";
 	const canComposite = isCompositorSupported();
-	// Launch positioner: screen capture + camera on + compositor available → show the drag-to-position
-	// preview (the camera is baked onto the video, not shown live), instead of a PiP self-view.
-	const wantsPositioner =
-		!!selectedCameraId && recordingMode !== "camera" && canComposite;
-	const showPositioner = wantsPositioner && !isRecording && !isBusy;
-	// Native PiP self-view: kept for camera-only mode, and as the fallback when the compositor is unavailable
-	// (non-Chromium) so screen recordings still get a camera. Never shown when we're compositing.
+	const cameraOn = !!selectedCameraId;
+	const canEnableCamera = availableCameras.length > 0;
+	const onToggleCamera = () =>
+		handleCameraChange(
+			cameraOn ? null : (availableCameras[0]?.deviceId ?? null),
+		);
+	// Big camera preview column: shown for screen captures whenever the compositor is available (it also
+	// hosts the "turn camera on" CTA, so it appears even when the camera is off). Setup state only.
+	const showPreviewColumn =
+		recordingMode !== "camera" && canComposite && !isRecording && !isBusy;
+	// Native PiP self-view: only for camera-only mode, or the non-Chromium fallback for screen modes so a
+	// screen recording still gets a camera. Never shown when we're compositing.
 	const showCameraPreview =
-		!!selectedCameraId &&
-		!wantsPositioner &&
+		cameraOn &&
+		(recordingMode === "camera" || !canComposite) &&
 		(recordingMode !== "camera" || (!isSettingUp && !isBusy));
 
 	// Live camera stream for the launch positioner (its own acquisition; Chrome allows the recorder's
 	// compositor to open the same device again at record time). Released as soon as the positioner hides.
 	useEffect(() => {
-		if (!showPositioner || !selectedCameraId) {
+		if (!showPreviewColumn || !cameraOn || !selectedCameraId) {
 			setPreviewCameraStream(null);
 			return;
 		}
@@ -346,7 +351,7 @@ export const WebRecorderDialog = ({
 				t.stop();
 			});
 		};
-	}, [showPositioner, selectedCameraId]);
+	}, [showPreviewColumn, cameraOn, selectedCameraId]);
 	const recordingTimerDisplayMs = user.isPro
 		? durationMs
 		: Math.max(0, FREE_PLAN_MAX_RECORDING_MS - durationMs);
@@ -362,7 +367,7 @@ export const WebRecorderDialog = ({
 				</DialogTrigger>
 				<DialogContent
 					ref={dialogContentRef}
-					className="w-[300px] border-none bg-transparent p-0 [&>button]:hidden"
+					className={`${showPreviewColumn ? "w-[760px]" : "w-[300px]"} border-none bg-transparent p-0 [&>button]:hidden`}
 					onPointerDownOutside={handlePointerDownOutside}
 					onFocusOutside={handleFocusOutside}
 					onInteractOutside={handleInteractOutside}
@@ -395,88 +400,88 @@ export const WebRecorderDialog = ({
 									isBusy={isBusy}
 									onClose={handleClose}
 								/>
-								<RecordingModeSelector
-									mode={recordingMode}
-									disabled={isBusy}
-									onModeChange={setRecordingMode}
-								/>
-								{screenCaptureWarning && (
-									<div className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
-										{screenCaptureWarning}
-									</div>
-								)}
-								<CameraSelector
-									selectedCameraId={selectedCameraId}
-									availableCameras={availableCameras}
-									dialogOpen={open}
-									disabled={isBusy}
-									open={cameraSelectOpen}
-									onOpenChange={(isOpen) => {
-										setCameraSelectOpen(isOpen);
-										if (isOpen) {
-											setMicSelectOpen(false);
-										}
-									}}
-									onCameraChange={handleCameraChange}
-									onRefreshDevices={refreshCameras}
-								/>
-								{/* Composited camera: the bubble is painted straight onto the recorded video at the
-								    spot picked here, for ANY screen mode (fullscreen/window/tab) — so it's positioned,
-								    not warned about. Hidden once recording starts (it was placed up front). */}
-								{showPositioner && (
+								{/* Two columns for screen captures: a control menu on the left, the big camera preview
+								    on the right. `display: contents` keeps camera-only mode a single column. */}
+								<div
+									className={
+										showPreviewColumn ? "flex items-stretch gap-4" : "contents"
+									}
+								>
 									<div
-										className="flex flex-col gap-2"
-										data-testid="tape-camera-position"
-									>
-										<CameraLaunchPositioner
-											cameraStream={previewCameraStream}
-											position={bubblePosition}
-											onChange={setBubblePosition}
-										/>
-										<div
-											data-testid="tape-camera-note"
-											className="rounded-md border border-gray-5 bg-gray-2 px-3 py-2.5 text-xs leading-relaxed text-gray-11"
-										>
-											<p className="font-medium text-gray-12">
-												Position your camera on the recording
-											</p>
-											<p className="mt-0.5">
-												Click a corner above to place it. You won’t see your
-												camera on your screen while you record — it’s painted
-												straight onto the video at the spot you pick.
-											</p>
-										</div>
-									</div>
-								)}
-								<MicrophoneSelector
-									selectedMicId={selectedMicId}
-									availableMics={availableMics}
-									dialogOpen={open}
-									disabled={isBusy}
-									open={micSelectOpen}
-									onOpenChange={(isOpen) => {
-										setMicSelectOpen(isOpen);
-										if (isOpen) {
-											setCameraSelectOpen(false);
+										className={
+											showPreviewColumn
+												? "flex w-[264px] shrink-0 flex-col gap-[0.75rem]"
+												: "contents"
 										}
-									}}
-									onMicChange={handleMicChange}
-									onRefreshDevices={refreshMics}
-								/>
-								{recordingMode !== "camera" && (
-									<SystemAudioToggle
-										enabled={systemAudioEnabled}
-										disabled={isBusy}
-										recordingMode={recordingMode}
-										onToggle={handleSystemAudioChange}
-									/>
-								)}
-								<RecordingButton
-									isRecording={isRecording}
-									disabled={!canStartRecording || (isBusy && !isRecording)}
-									onStart={handleStartClick}
-									onStop={handleStopClick}
-								/>
+									>
+										<RecordingModeSelector
+											mode={recordingMode}
+											disabled={isBusy}
+											onModeChange={setRecordingMode}
+										/>
+										{screenCaptureWarning && (
+											<div className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
+												{screenCaptureWarning}
+											</div>
+										)}
+										<CameraSelector
+											selectedCameraId={selectedCameraId}
+											availableCameras={availableCameras}
+											dialogOpen={open}
+											disabled={isBusy}
+											open={cameraSelectOpen}
+											onOpenChange={(isOpen) => {
+												setCameraSelectOpen(isOpen);
+												if (isOpen) {
+													setMicSelectOpen(false);
+												}
+											}}
+											onCameraChange={handleCameraChange}
+											onRefreshDevices={refreshCameras}
+										/>
+										<MicrophoneSelector
+											selectedMicId={selectedMicId}
+											availableMics={availableMics}
+											dialogOpen={open}
+											disabled={isBusy}
+											open={micSelectOpen}
+											onOpenChange={(isOpen) => {
+												setMicSelectOpen(isOpen);
+												if (isOpen) {
+													setCameraSelectOpen(false);
+												}
+											}}
+											onMicChange={handleMicChange}
+											onRefreshDevices={refreshMics}
+										/>
+										{recordingMode !== "camera" && (
+											<SystemAudioToggle
+												enabled={systemAudioEnabled}
+												disabled={isBusy}
+												recordingMode={recordingMode}
+												onToggle={handleSystemAudioChange}
+											/>
+										)}
+										<RecordingButton
+											isRecording={isRecording}
+											disabled={!canStartRecording || (isBusy && !isRecording)}
+											onStart={handleStartClick}
+											onStop={handleStopClick}
+										/>
+									</div>
+									{showPreviewColumn && (
+										<div className="flex min-w-0 flex-1 items-start pt-[2px]">
+											<CameraPreviewArea
+												cameraStream={previewCameraStream}
+												cameraOn={cameraOn}
+												canEnableCamera={canEnableCamera}
+												onToggleCamera={onToggleCamera}
+												position={bubblePosition}
+												onPositionChange={setBubblePosition}
+											/>
+										</div>
+									)}
+								</div>
 								{!isBrowserSupported && unsupportedReason && (
 									<div className="rounded-md border border-red-6 bg-red-3/70 px-3 py-2 text-xs leading-snug text-red-12">
 										{unsupportedReason}
