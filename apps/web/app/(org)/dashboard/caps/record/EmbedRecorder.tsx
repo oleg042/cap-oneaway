@@ -18,9 +18,9 @@ export function EmbedRecorder() {
 		el.classList.add("dark");
 		el.style.background = "#0a0a0a";
 		document.body.style.background = "#0a0a0a";
-		// NB: we deliberately KEEP the tape_embed cookie so the recorder stays bare across reloads. Cap's
-		// other dashboard routes are locked down at the proxy (redirected to the portal), so there's nothing
-		// for bare mode to "leak" onto — the record page is the only reachable /dashboard page.
+		// NB: the tape_embed cookie is durable + scoped to this record route (set httpOnly by the SSO route),
+		// so the recorder stays bare across reloads and we never touch it client-side. Path-scoping keeps bare
+		// mode confined to this page; Cap's other dashboard routes are also proxy-locked to the portal anyway.
 		return () => {
 			if (!had) el.classList.remove("dark");
 			el.style.background = "";

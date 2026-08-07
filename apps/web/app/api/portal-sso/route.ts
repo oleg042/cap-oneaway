@@ -212,16 +212,19 @@ export async function GET(request: Request) {
 		maxAge: SESSION_MAX_AGE,
 	});
 	// When launched inside the portal's iframe, flag embed mode so the dashboard layout drops its chrome
-	// and only the recorder renders. Short-lived; sameSite:none/secure so it works in the third-party frame.
+	// and only the recorder renders. sameSite:none/secure so it works in the third-party frame.
 	if (url.searchParams.get("embed") === "1") {
-		// Not httpOnly + short-lived: the embed recorder clears it client-side right after it renders, so
-		// bare mode never leaks onto Cap's other dashboard pages (which would strip their nav = "broken").
+		// Scoped to the record route (bare mode can only ever apply there — never Cap's other dashboard
+		// pages) and given the full session lifetime. Durable because a page REFRESH hits the record URL
+		// directly, bypassing this SSO route — a short-lived cookie would expire mid-session and the layout,
+		// unable to read the ?embed=1 query param, would fall back to rendering full Cap chrome behind the
+		// recorder. httpOnly: only the server layout reads it; nothing touches it client-side anymore.
 		res.cookies.set("tape_embed", "1", {
-			httpOnly: false,
+			httpOnly: true,
 			sameSite: "none",
 			secure: true,
-			path: "/",
-			maxAge: 5 * 60,
+			path: "/dashboard/caps/record",
+			maxAge: SESSION_MAX_AGE,
 		});
 	}
 	return res;

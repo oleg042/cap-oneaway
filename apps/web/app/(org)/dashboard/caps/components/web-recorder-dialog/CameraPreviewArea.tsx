@@ -39,19 +39,20 @@ export function CameraPreviewArea({
 					{/* Explainer + toggle, overlaid dead-center. Only the card takes pointer events, so the
 					    corner targets around it stay clickable. */}
 					<div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-						<div className="pointer-events-auto max-w-[400px] rounded-2xl border border-gray-5 bg-gray-2/85 px-7 py-6 text-center shadow-xl backdrop-blur-sm">
-							<div className="flex items-center justify-center gap-2 text-[17px] font-medium text-gray-12">
-								<Video className="h-5 w-5" style={{ color: "#FD4F03" }} />
+						<div className="pointer-events-auto max-w-[440px] rounded-2xl border border-gray-5 bg-gray-2/85 px-8 py-7 text-center shadow-xl backdrop-blur-sm">
+							<div className="flex items-center justify-center gap-2.5 text-[19px] font-medium text-gray-12">
+								<Video className="h-[22px] w-[22px]" style={{ color: "#FD4F03" }} />
 								Camera is on
 							</div>
-							<p className="mt-2.5 text-[14px] leading-relaxed text-gray-11">
-								You won't see it while you record — it's painted onto the video.
-								Click a corner to place it.
+							<p className="mt-3 text-[15px] leading-relaxed text-gray-11">
+								The round camera bubble won't show on your own screen while you
+								record — but it's being captured and will appear baked into your
+								finished video. Click a corner below to choose where it sits.
 							</p>
 							<button
 								type="button"
 								onClick={onToggleCamera}
-								className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-6 px-4 py-2 text-[14px] text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12"
+								className="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-6 px-4 py-2.5 text-[15px] text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12"
 							>
 								<VideoOff className="h-4 w-4" />
 								Turn camera off
