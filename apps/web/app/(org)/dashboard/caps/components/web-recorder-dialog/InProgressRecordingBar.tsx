@@ -339,7 +339,7 @@ export const InProgressRecordingBar = ({
 										{phase === "recording" && (
 											<MicLevelMeter
 												deviceId={micDeviceId ?? ""}
-												color="var(--blue-9)"
+												color="var(--cobalt)"
 											/>
 										)}
 									</>

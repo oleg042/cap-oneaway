@@ -1694,7 +1694,7 @@ export function EditVideoClient({
 								"0 16px 32px -10px rgba(15,23,42,0.20)",
 							].join(", "),
 						}}
-						className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-9)] text-white ring-1 ring-[var(--orange-9)] transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)] sm:w-16"
+						className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-[var(--cobalt)] text-white ring-1 ring-[var(--cobalt)] transition hover:bg-[var(--cobalt-hover)] active:bg-[var(--cobalt-hover)] sm:w-16"
 					>
 						{isPlaying ? (
 							<Pause className="size-5" strokeWidth={2.5} aria-hidden />
@@ -1788,7 +1788,7 @@ export function EditVideoClient({
 													!hasMultipleClips
 														? ""
 														: isActive
-															? "bg-white/[0.10] ring-2 ring-inset ring-[var(--orange-8)]"
+															? "bg-white/[0.10] ring-2 ring-inset ring-[var(--cobalt)]"
 															: "bg-black/35 ring-1 ring-inset ring-white/15",
 												].join(" ")}
 												style={{
@@ -1796,8 +1796,8 @@ export function EditVideoClient({
 													width: `calc(${widthPct}% - 3px)`,
 												}}
 											>
-												<div className="absolute inset-x-0 top-0 h-1.5 bg-[var(--orange-9)]" />
-												<div className="absolute inset-x-0 bottom-0 h-1.5 bg-[var(--orange-9)]" />
+												<div className="absolute inset-x-0 top-0 h-1.5 bg-[var(--cobalt)]" />
+												<div className="absolute inset-x-0 bottom-0 h-1.5 bg-[var(--cobalt)]" />
 											</div>
 
 											<button
@@ -1808,12 +1808,12 @@ export function EditVideoClient({
 													startClipEdgeDrag(clip.id, "start", isFirst, event)
 												}
 												className={[
-													"absolute inset-y-0 z-20 flex cursor-ew-resize touch-none items-center justify-center bg-[var(--orange-9)] text-white transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)]",
+													"absolute inset-y-0 z-20 flex cursor-ew-resize touch-none items-center justify-center bg-[var(--cobalt)] text-white transition hover:bg-[var(--cobalt-hover)] active:bg-[var(--cobalt-hover)]",
 													isFirst
 														? "w-6 rounded-l-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(253,79,3,0.55)]"
 														: "rounded-l-md shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
 													activeHandle === "start" && isFirst
-														? "ring-2 ring-[var(--orange-8)] ring-inset"
+														? "ring-2 ring-[var(--cobalt)] ring-inset"
 														: "",
 												].join(" ")}
 												style={
@@ -1847,12 +1847,12 @@ export function EditVideoClient({
 													startClipEdgeDrag(clip.id, "end", isLast, event)
 												}
 												className={[
-													"absolute inset-y-0 z-20 flex -translate-x-full cursor-ew-resize touch-none items-center justify-center bg-[var(--orange-9)] text-white transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)]",
+													"absolute inset-y-0 z-20 flex -translate-x-full cursor-ew-resize touch-none items-center justify-center bg-[var(--cobalt)] text-white transition hover:bg-[var(--cobalt-hover)] active:bg-[var(--cobalt-hover)]",
 													isLast
 														? "w-6 rounded-r-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(253,79,3,0.55)]"
 														: "rounded-r-md shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
 													activeHandle === "end" && isLast
-														? "ring-2 ring-[var(--orange-8)] ring-inset"
+														? "ring-2 ring-[var(--cobalt)] ring-inset"
 														: "",
 												].join(" ")}
 												style={
@@ -1898,7 +1898,7 @@ export function EditVideoClient({
 												event.stopPropagation();
 												removeSplitAtIndex(index);
 											}}
-											className="absolute -top-9 left-0 z-[50] flex size-4 -translate-x-1/2 items-center justify-center rounded-full bg-gray-12 text-white opacity-0 shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-1 ring-black/30 transition-all hover:scale-110 hover:!opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange-8)] group-hover:opacity-80 [@media(hover:none)]:opacity-70"
+											className="absolute -top-9 left-0 z-[50] flex size-4 -translate-x-1/2 items-center justify-center rounded-full bg-gray-12 text-white opacity-0 shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-1 ring-black/30 transition-all hover:scale-110 hover:!opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cobalt)] group-hover:opacity-80 [@media(hover:none)]:opacity-70"
 											style={{ left: `${positionPercent}%` }}
 										>
 											<X className="size-2.5" strokeWidth={3} aria-hidden />

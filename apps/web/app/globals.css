@@ -28,6 +28,10 @@
 	--blue-10: var(--orange-10);
 	--blue-11: var(--orange-11);
 	--blue-12: var(--orange-12);
+	/* OneAway brand COBALT — for editor editing controls (play buttons, timeline trim frames) that must read
+	   as edit affordances, NOT the brand orange. Value mirrors the portal theme's --cobalt. Theme-shared. */
+	--cobalt: hsl(231 95% 70%);
+	--cobalt-hover: hsl(231 95% 60%);
 	/* OneAway "Tape" brand — orange accent (was Cap blue). Shared across light/dark so it stays theme-aware. */
 	--primary: #fd4f03;
 	--primary-2: #e24503;

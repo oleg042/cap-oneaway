@@ -756,7 +756,7 @@ export function CapVideoPlayer({
 							exit={{ opacity: 0, y: 10 }}
 							transition={{ duration: 0.2 }}
 							onClick={() => videoRef.current?.play()}
-							className="flex absolute inset-0 z-10 justify-center items-center m-auto bg-[var(--orange-9)] rounded-full transition-colors transform cursor-pointer hover:bg-[var(--orange-10)] size-12 xs:size-20 md:size-32"
+							className="flex absolute inset-0 z-10 justify-center items-center m-auto bg-[var(--cobalt)] rounded-full transition-colors transform cursor-pointer hover:bg-[var(--cobalt-hover)] size-12 xs:size-20 md:size-32"
 						>
 							<FontAwesomeIcon
 								icon={faPlay}
