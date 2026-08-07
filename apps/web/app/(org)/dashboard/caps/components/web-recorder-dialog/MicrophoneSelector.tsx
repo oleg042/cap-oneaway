@@ -11,6 +11,7 @@ import clsx from "clsx";
 import { MicIcon, MicOffIcon } from "lucide-react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { toast } from "sonner";
+import { MicLevelMeter } from "./MicLevelMeter";
 import { useMediaPermission } from "./useMediaPermission";
 import { NO_MICROPHONE, NO_MICROPHONE_VALUE } from "./web-recorder-constants";
 
@@ -37,6 +38,10 @@ export const MicrophoneSelector = ({
 }: MicrophoneSelectorProps) => {
 	const micEnabled = selectedMicId !== null;
 	const { requestPermission } = useMediaPermission("microphone", dialogOpen);
+
+	// Live input meter (pulses with your voice) — shown only while setting up, with a mic on.
+	const showMeter =
+		micEnabled && dialogOpen && !disabled && selectedMicId !== null;
 
 	// Device availability is the reliable cross-browser signal for microphone
 	// access: a deviceId is only exposed once permission is actually active.
@@ -126,7 +131,8 @@ export const MicrophoneSelector = ({
 				<div className="relative w-full">
 					<SelectTrigger
 						className={clsx(
-							"relative flex flex-row items-center h-[2rem] pl-[0.375rem] pr-[3.5rem] gap-[0.375rem] border border-gray-3 rounded-lg w-full transition-colors overflow-hidden z-10 font-normal text-[0.875rem] bg-transparent hover:bg-transparent focus:bg-transparent focus:border-gray-3 hover:border-gray-3 text-[--text-primary] disabled:text-gray-11 [&>svg]:hidden",
+							"relative flex flex-row items-center h-[2rem] pl-[0.375rem] gap-[0.375rem] border border-gray-3 rounded-lg w-full transition-colors overflow-hidden z-10 font-normal text-[0.875rem] bg-transparent hover:bg-transparent focus:bg-transparent focus:border-gray-3 hover:border-gray-3 text-[--text-primary] disabled:text-gray-11 [&>svg]:hidden",
+							showMeter ? "pr-[5.25rem]" : "pr-[3.5rem]",
 							disabled || shouldRequestPermission
 								? "cursor-default"
 								: undefined,
@@ -170,6 +176,12 @@ export const MicrophoneSelector = ({
 								? "On"
 								: "Off"}
 					</button>
+					{showMeter && selectedMicId && (
+						<MicLevelMeter
+							deviceId={selectedMicId}
+							className="absolute right-[3.25rem] top-1/2 z-20 -translate-y-1/2"
+						/>
+					)}
 				</div>
 				<SelectContent className="z-[502]">
 					<SelectItem value={NO_MICROPHONE_VALUE}>

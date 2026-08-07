@@ -469,7 +469,7 @@ export const WebRecorderDialog = ({
 											selectedMicId={selectedMicId}
 											availableMics={availableMics}
 											dialogOpen={open}
-											disabled={isBusy}
+											disabled={isBusy || isRecording}
 											open={micSelectOpen}
 											onOpenChange={(isOpen) => {
 												setMicSelectOpen(isOpen);
