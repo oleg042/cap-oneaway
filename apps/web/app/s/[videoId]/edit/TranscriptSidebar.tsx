@@ -327,7 +327,7 @@ export function TranscriptSidebar({
 	const groupVirtualizer = useVirtualizer({
 		count: groups.length,
 		getScrollElement: () => transcriptScrollRef.current,
-		estimateSize: () => 116,
+		estimateSize: () => 72,
 		getItemKey: (index) => groups[index]?.id ?? index,
 		overscan: 6,
 	});
@@ -750,7 +750,7 @@ export function TranscriptSidebar({
 									key={group.id}
 									data-index={virtualGroup.index}
 									ref={groupVirtualizer.measureElement}
-									className="absolute left-0 top-0 w-full pb-6"
+									className="absolute left-0 top-0 w-full pb-3"
 									style={{
 										transform: `translateY(${virtualGroup.start}px)`,
 									}}
