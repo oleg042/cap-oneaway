@@ -111,7 +111,9 @@ export default async function DashboardLayout({
 					referClicked={referClicked === "true"}
 				>
 					{tapeEmbed ? (
-					<div className="dark w-screen h-screen overflow-auto bg-gray-1 text-gray-12">{children}</div>
+						<div className="dark w-screen h-screen overflow-auto bg-gray-1 text-gray-12">
+							{children}
+						</div>
 					) : (
 						<>
 							<DashboardPasteImport />

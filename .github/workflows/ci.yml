@@ -300,6 +300,13 @@ jobs:
 
       - run: node scripts/setup.js
 
+      # cargo build resolves the cap-muxer sidecar as a Tauri resource, so the
+      # binaries must exist first — same step the Clippy/Build Desktop jobs run.
+      # Without it this job fails on a missing `binaries/cap-muxer-<target>`.
+      - name: Build desktop binaries
+        shell: bash
+        run: ./scripts/build-desktop-binaries.sh ${{ matrix.settings.target }}
+
       - name: Build debug
         run: cargo build --all
 

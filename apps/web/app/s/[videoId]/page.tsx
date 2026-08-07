@@ -387,7 +387,10 @@ export default async function ShareVideoPage(props: PageProps<"/s/[videoId]">) {
 			Effect.succeed({ needsPassword: true } as const),
 		),
 		Effect.map((data) => (
-			<div key={videoId} className="dark flex flex-col min-h-screen bg-gray-2 text-gray-12">
+			<div
+				key={videoId}
+				className="dark flex flex-col min-h-screen bg-gray-2 text-gray-12"
+			>
 				<PasswordOverlay isOpen={data.needsPassword} videoId={videoId} />
 				{!data.needsPassword && (
 					<AuthorizedContent video={data.video} searchParams={searchParams} />

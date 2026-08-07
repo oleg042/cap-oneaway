@@ -125,11 +125,14 @@ function similarity(a: string, b: string): number {
 		curr[0] = i;
 		for (let j = 1; j <= n; j++) {
 			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-			curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+			// Non-null assertions: every index here is within the pre-sized
+			// `n + 1` rows, so these can never be undefined at runtime. Required
+			// only because tsconfig sets `noUncheckedIndexedAccess`.
+			curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
 		}
-		for (let j = 0; j <= n; j++) prev[j] = curr[j];
+		for (let j = 0; j <= n; j++) prev[j] = curr[j]!;
 	}
-	return 1 - prev[n] / Math.max(m, n);
+	return 1 - prev[n]! / Math.max(m, n);
 }
 
 /** Preserve any trailing punctuation from the original token on the replacement. */
@@ -167,14 +170,15 @@ export function correctTranscriptWords<T extends CorrectableWord>(
 			if (i + tokens.length > words.length) continue;
 			let ok = true;
 			for (let k = 0; k < tokens.length; k++) {
-				if (normalize(words[i + k].text) !== tokens[k]) {
+				// Guarded by the `i + tokens.length > words.length` check above.
+				if (normalize(words[i + k]!.text) !== tokens[k]) {
 					ok = false;
 					break;
 				}
 			}
 			if (!ok) continue;
-			const first = words[i];
-			const last = words[i + tokens.length - 1];
+			const first = words[i]!;
+			const last = words[i + tokens.length - 1]!;
 			out.push({
 				...first,
 				text: term + trailingPunct(last.text),
@@ -186,7 +190,8 @@ export function correctTranscriptWords<T extends CorrectableWord>(
 			break;
 		}
 		if (!matched) {
-			out.push(words[i]);
+			// Bounded by the `i < words.length` loop condition.
+			out.push(words[i]!);
 			i += 1;
 		}
 	}

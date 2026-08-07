@@ -56,7 +56,9 @@ export function MicLevelMeter({
 						const lo = Math.floor((i / BARS) * usable);
 						const hi = Math.max(lo + 1, Math.floor(((i + 1) / BARS) * usable));
 						let sum = 0;
-						for (let j = lo; j < hi; j++) sum += data[j];
+						// data[j] is in-bounds (lo..hi within the array); assertion only satisfies
+						// tsconfig's noUncheckedIndexedAccess.
+						for (let j = lo; j < hi; j++) sum += data[j]!;
 						const avg = sum / (hi - lo) / 255; // 0..1
 						const el = barRefs.current[i];
 						if (el) {

@@ -1114,7 +1114,9 @@ export const useWebRecorder = ({
 						}),
 					});
 					cameraCompositorRef.current = compositor;
-					recordVideoTracks = [compositor.videoTrack];
+					// The compositor's output is a MediaStreamTrackGenerator({kind:"video"}) — a real
+					// video track; only its declared type widens to MediaStreamTrack.
+					recordVideoTracks = [compositor.videoTrack as MediaStreamVideoTrack];
 				} catch (compositeError) {
 					console.warn(
 						"[recorder] camera compositing unavailable — recording screen only",
