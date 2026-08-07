@@ -592,7 +592,7 @@ export function CapVideoPlayer({
 							type="button"
 							onClick={retryProcessing}
 							disabled={isRetryingProcessing}
-							className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-full transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-blue-600"
+							className="px-4 py-2 text-sm font-medium text-white bg-[var(--orange-9)] rounded-full transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-[var(--orange-10)]"
 						>
 							{isRetryingProcessing ? "Retrying..." : "Retry Processing"}
 						</button>
@@ -756,7 +756,7 @@ export function CapVideoPlayer({
 							exit={{ opacity: 0, y: 10 }}
 							transition={{ duration: 0.2 }}
 							onClick={() => videoRef.current?.play()}
-							className="flex absolute inset-0 z-10 justify-center items-center m-auto bg-blue-500 rounded-full transition-colors transform cursor-pointer hover:bg-blue-600 size-12 xs:size-20 md:size-32"
+							className="flex absolute inset-0 z-10 justify-center items-center m-auto bg-[var(--orange-9)] rounded-full transition-colors transform cursor-pointer hover:bg-[var(--orange-10)] size-12 xs:size-20 md:size-32"
 						>
 							<FontAwesomeIcon
 								icon={faPlay}

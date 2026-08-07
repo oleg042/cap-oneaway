@@ -1570,7 +1570,7 @@ export function EditVideoClient({
 
 	return (
 		<div className="flex min-h-screen flex-col bg-gray-1 text-gray-12">
-			<header className="sticky top-0 z-30 border-b border-gray-4 bg-white/85 backdrop-blur">
+			<header className="sticky top-0 z-30 border-b border-gray-4 bg-gray-2 backdrop-blur">
 				<div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between gap-2 px-3 sm:h-16 sm:px-5">
 					<div className="flex items-center gap-1.5">
 						<button
@@ -1692,7 +1692,7 @@ export function EditVideoClient({
 								"0 16px 32px -10px rgba(15,23,42,0.20)",
 							].join(", "),
 						}}
-						className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-gray-12 text-white ring-1 ring-gray-12 transition hover:bg-gray-11 active:bg-gray-10 sm:w-16"
+						className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-[var(--orange-9)] text-white ring-1 ring-[var(--orange-9)] transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)] sm:w-16"
 					>
 						{isPlaying ? (
 							<Pause className="size-5" strokeWidth={2.5} aria-hidden />
@@ -1786,7 +1786,7 @@ export function EditVideoClient({
 													!hasMultipleClips
 														? ""
 														: isActive
-															? "bg-white/[0.10] ring-2 ring-inset ring-blue-400"
+															? "bg-white/[0.10] ring-2 ring-inset ring-[var(--orange-8)]"
 															: "bg-black/35 ring-1 ring-inset ring-white/15",
 												].join(" ")}
 												style={{
@@ -1794,8 +1794,8 @@ export function EditVideoClient({
 													width: `calc(${widthPct}% - 3px)`,
 												}}
 											>
-												<div className="absolute inset-x-0 top-0 h-1.5 bg-blue-500" />
-												<div className="absolute inset-x-0 bottom-0 h-1.5 bg-blue-500" />
+												<div className="absolute inset-x-0 top-0 h-1.5 bg-[var(--orange-9)]" />
+												<div className="absolute inset-x-0 bottom-0 h-1.5 bg-[var(--orange-9)]" />
 											</div>
 
 											<button
@@ -1806,12 +1806,12 @@ export function EditVideoClient({
 													startClipEdgeDrag(clip.id, "start", isFirst, event)
 												}
 												className={[
-													"absolute inset-y-0 z-20 flex cursor-ew-resize touch-none items-center justify-center bg-blue-500 text-white transition hover:bg-blue-400 active:bg-blue-600",
+													"absolute inset-y-0 z-20 flex cursor-ew-resize touch-none items-center justify-center bg-[var(--orange-9)] text-white transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)]",
 													isFirst
-														? "w-6 rounded-l-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(59,130,246,0.55)]"
+														? "w-6 rounded-l-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(253,79,3,0.55)]"
 														: "rounded-l-md shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
 													activeHandle === "start" && isFirst
-														? "ring-2 ring-blue-300 ring-inset"
+														? "ring-2 ring-[var(--orange-8)] ring-inset"
 														: "",
 												].join(" ")}
 												style={
@@ -1845,12 +1845,12 @@ export function EditVideoClient({
 													startClipEdgeDrag(clip.id, "end", isLast, event)
 												}
 												className={[
-													"absolute inset-y-0 z-20 flex -translate-x-full cursor-ew-resize touch-none items-center justify-center bg-blue-500 text-white transition hover:bg-blue-400 active:bg-blue-600",
+													"absolute inset-y-0 z-20 flex -translate-x-full cursor-ew-resize touch-none items-center justify-center bg-[var(--orange-9)] text-white transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)]",
 													isLast
-														? "w-6 rounded-r-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(59,130,246,0.55)]"
+														? "w-6 rounded-r-lg shadow-[0_1px_2px_rgba(0,0,0,0.3),0_2px_8px_-1px_rgba(253,79,3,0.55)]"
 														: "rounded-r-md shadow-[0_1px_2px_rgba(0,0,0,0.35)]",
 													activeHandle === "end" && isLast
-														? "ring-2 ring-blue-300 ring-inset"
+														? "ring-2 ring-[var(--orange-8)] ring-inset"
 														: "",
 												].join(" ")}
 												style={
@@ -1896,7 +1896,7 @@ export function EditVideoClient({
 												event.stopPropagation();
 												removeSplitAtIndex(index);
 											}}
-											className="absolute -top-9 left-0 z-[50] flex size-4 -translate-x-1/2 items-center justify-center rounded-full bg-gray-12 text-white opacity-0 shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-1 ring-black/30 transition-all hover:scale-110 hover:!opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 group-hover:opacity-80 [@media(hover:none)]:opacity-70"
+											className="absolute -top-9 left-0 z-[50] flex size-4 -translate-x-1/2 items-center justify-center rounded-full bg-gray-12 text-white opacity-0 shadow-[0_2px_6px_rgba(0,0,0,0.45)] ring-1 ring-black/30 transition-all hover:scale-110 hover:!opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--orange-8)] group-hover:opacity-80 [@media(hover:none)]:opacity-70"
 											style={{ left: `${positionPercent}%` }}
 										>
 											<X className="size-2.5" strokeWidth={3} aria-hidden />
@@ -1945,7 +1945,7 @@ export function EditVideoClient({
 							<span
 								className={
 									outputDuration < video.duration - 0.05
-										? "font-semibold text-blue-600"
+										? "font-semibold text-[var(--orange-11)]"
 										: "text-gray-10"
 								}
 							>
