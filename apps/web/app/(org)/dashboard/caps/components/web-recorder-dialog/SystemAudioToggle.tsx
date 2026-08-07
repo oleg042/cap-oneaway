@@ -26,13 +26,13 @@ export const SystemAudioToggle = ({
 	const hint = enabled ? SYSTEM_AUDIO_HINTS[recordingMode] : undefined;
 
 	return (
-		<div className="flex flex-col gap-[0.25rem] items-stretch text-[--text-primary]">
+		<div className="flex flex-col gap-[0.25rem] items-stretch text-gray-12">
 			<button
 				type="button"
 				disabled={disabled}
 				onClick={() => onToggle(!enabled)}
 				className={clsx(
-					"relative flex flex-row items-center h-[2rem] px-[0.375rem] gap-[0.375rem] border border-gray-3 rounded-lg w-full transition-colors overflow-hidden font-normal text-[0.875rem] text-[--text-primary] disabled:text-gray-11",
+					"relative flex flex-row items-center h-[2rem] px-[0.375rem] gap-[0.375rem] border border-gray-3 rounded-lg w-full transition-colors overflow-hidden font-normal text-[0.875rem] text-gray-12 disabled:text-gray-11",
 					disabled ? "cursor-default" : "cursor-pointer hover:bg-gray-3/50",
 				)}
 			>

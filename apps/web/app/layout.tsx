@@ -79,27 +79,34 @@ export default function RootLayout({ children }: PropsWithChildren) {
 		// which can land before hydration finishes.
 		<html className={defaultFont.className} lang="en" suppressHydrationWarning>
 			<head>
+				{/* Tape favicon (orange recording dot + small "t"). SVG first so modern browsers use the crisp
+				    vector; ?v= busts the aggressively-cached old Cap favicon. */}
+				<link rel="icon" type="image/svg+xml" href="/favicon.svg?v=tape" />
 				<link
 					rel="apple-touch-icon"
 					sizes="180x180"
-					href="/apple-touch-icon.png"
+					href="/apple-touch-icon.png?v=tape"
 				/>
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="32x32"
-					href="/favicon-32x32.png"
+					href="/favicon-32x32.png?v=tape"
 				/>
 				<link
 					rel="icon"
 					type="image/png"
 					sizes="16x16"
-					href="/favicon-16x16.png"
+					href="/favicon-16x16.png?v=tape"
 				/>
 				<link rel="manifest" href="/site.webmanifest" />
-				<link rel="mask-icon" href="/safari-pinned-tab.svg" color="#5bbad5" />
-				<link rel="shortcut icon" href="/favicon.ico" />
-				<meta name="msapplication-TileColor" content="#da532c" />
+				<link
+					rel="mask-icon"
+					href="/safari-pinned-tab.svg?v=tape"
+					color="#FD4F03"
+				/>
+				<link rel="shortcut icon" href="/favicon.ico?v=tape" />
+				<meta name="msapplication-TileColor" content="#FD4F03" />
 				<meta name="theme-color" content="#ffffff" />
 			</head>
 			<body suppressHydrationWarning>

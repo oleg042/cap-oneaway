@@ -39,21 +39,21 @@ export function CameraPreviewArea({
 					{/* Explainer + toggle, overlaid dead-center. Only the card takes pointer events, so the
 					    corner targets around it stay clickable. */}
 					<div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
-						<div className="pointer-events-auto max-w-[300px] rounded-xl border border-gray-5 bg-gray-2/85 px-4 py-3 text-center shadow-xl backdrop-blur-sm">
-							<div className="flex items-center justify-center gap-1.5 text-[13px] font-medium text-gray-12">
-								<Video className="h-3.5 w-3.5" style={{ color: "#FD4F03" }} />
+						<div className="pointer-events-auto max-w-[400px] rounded-2xl border border-gray-5 bg-gray-2/85 px-7 py-6 text-center shadow-xl backdrop-blur-sm">
+							<div className="flex items-center justify-center gap-2 text-[17px] font-medium text-gray-12">
+								<Video className="h-5 w-5" style={{ color: "#FD4F03" }} />
 								Camera is on
 							</div>
-							<p className="mt-1 text-[11.5px] leading-relaxed text-gray-11">
+							<p className="mt-2.5 text-[14px] leading-relaxed text-gray-11">
 								You won't see it while you record — it's painted onto the video.
 								Click a corner to place it.
 							</p>
 							<button
 								type="button"
 								onClick={onToggleCamera}
-								className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gray-6 px-2.5 py-1 text-[12px] text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12"
+								className="mt-4 inline-flex items-center gap-2 rounded-lg border border-gray-6 px-4 py-2 text-[14px] text-gray-11 transition-colors hover:bg-gray-4 hover:text-gray-12"
 							>
-								<VideoOff className="h-3.5 w-3.5" />
+								<VideoOff className="h-4 w-4" />
 								Turn camera off
 							</button>
 						</div>
