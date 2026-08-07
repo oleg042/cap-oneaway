@@ -47,7 +47,10 @@ export function CameraPreviewArea({
 							<p className="mt-3 text-[15px] leading-relaxed text-gray-11">
 								The round camera bubble won't show on your own screen while you
 								record — but it's being captured and will appear baked into your
-								finished video. Click a corner below to choose where it sits.
+								finished video.
+							</p>
+							<p className="mt-3 text-[15px] leading-relaxed text-gray-11">
+								Click a corner below to choose where it sits.
 							</p>
 							<button
 								type="button"
