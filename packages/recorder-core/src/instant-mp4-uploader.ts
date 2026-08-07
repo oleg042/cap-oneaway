@@ -467,14 +467,30 @@ export class InstantRecordingUploader {
 			return;
 		}
 
-		if (this.bufferedBytes === 0) return;
-		if (!force && this.bufferedBytes < MIN_PART_SIZE_BYTES) return;
+		// R2 (and S3) require every NON-TRAILING multipart part to be exactly the same size.
+		// Emit fixed MIN_PART_SIZE_BYTES parts and keep the remainder buffered; only the final
+		// forced flush emits a smaller trailing part. Previously this flushed the ENTIRE buffer
+		// in one part (5 MiB + whatever chunk tipped it over the threshold), so consecutive
+		// parts had unequal sizes and R2's CompleteMultipartUpload rejected the whole upload
+		// with "InvalidPart: All non-trailing parts must have the same length" — every recording
+		// large enough to produce 3+ parts got stuck "Processing" forever. Mirrors
+		// flushDriveBuffer, which already sliced fixed-size parts.
+		while (this.bufferedBytes > 0) {
+			if (!force && this.bufferedBytes < MIN_PART_SIZE_BYTES) return;
 
-		const chunk = new Blob(this.bufferedChunks, { type: this.mimeType });
-		this.bufferedChunks = [];
-		this.bufferedBytes = 0;
+			const partSize =
+				force && this.bufferedBytes <= MIN_PART_SIZE_BYTES
+					? this.bufferedBytes
+					: MIN_PART_SIZE_BYTES;
+			const { part, remainingChunks, remainingBytes } =
+				this.takeBufferedPart(partSize);
 
-		this.enqueueUpload(chunk);
+			this.bufferedChunks = remainingChunks;
+			this.bufferedBytes = remainingBytes;
+			this.enqueueUpload(part);
+
+			if (partSize < MIN_PART_SIZE_BYTES) return;
+		}
 	}
 
 	private flushDriveBuffer(force = false) {

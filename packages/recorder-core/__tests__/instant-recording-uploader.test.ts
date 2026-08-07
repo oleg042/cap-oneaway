@@ -5,9 +5,14 @@ import {
 import type { VideoId } from "@cap/recorder-core/recorder-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const STREAMED_PART_BYTES = 5 * 1024 * 1024 + 128;
+// Exactly one fixed part-size: a single such chunk flushes to exactly one streamed part.
+// (Non-trailing multipart parts must all be the same size on R2, so the uploader now emits
+// fixed MIN_PART_SIZE_BYTES parts — see "splits a large streamed recording…" below.)
+const STREAMED_PART_BYTES = 5 * 1024 * 1024;
 const DRIVE_PART_BYTES = 16 * 1024 * 1024;
-const OVERFLOW_PART_BYTES = 129 * 1024 * 1024;
+// > 128 MiB of pending bytes once sliced into fixed 5 MiB parts (26 parts = 130 MiB),
+// so enqueuing trips the MAX_PENDING_UPLOAD_BYTES backlog guard mid-flush.
+const OVERFLOW_PART_BYTES = 132 * 1024 * 1024;
 const FINALIZED_BLOB_BYTES = 129 * 1024 * 1024;
 
 type UploadOutcome =
@@ -199,6 +204,81 @@ describe("InstantRecordingUploader", () => {
 		expect(MockXMLHttpRequest.recordedHeaders[0]?.has("content-type")).toBe(
 			false,
 		);
+	});
+
+	it("splits a large streamed recording into equal-sized non-trailing parts (R2 requires it)", async () => {
+		const MIN_PART = 5 * 1024 * 1024;
+		let completeParts: Array<{
+			partNumber: number;
+			etag: string;
+			size: number;
+		}> = [];
+
+		const fetchMock = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = input.toString();
+				const body = init?.body ? JSON.parse(init.body as string) : null;
+				if (url === "/api/upload/multipart/presign-part") {
+					return makeJsonResponse({
+						presignedUrl: `https://uploads.example/part-${body.partNumber}`,
+					});
+				}
+				if (url === "/api/upload/multipart/complete") {
+					completeParts = body.parts;
+					return makeJsonResponse({ success: true });
+				}
+				throw new Error(`Unexpected fetch call: ${url}`);
+			},
+		);
+
+		vi.stubGlobal("fetch", fetchMock);
+		MockXMLHttpRequest.setOutcomes(
+			Array.from({ length: 8 }, (_, i) => ({
+				type: "success" as const,
+				etag: `etag-${i + 1}`,
+			})),
+		);
+
+		const uploader = new InstantRecordingUploader({
+			videoId,
+			uploadId: "upload-123",
+			mimeType: "video/webm",
+			subpath: "raw-upload.webm",
+			setUploadStatus: vi.fn(),
+			sendProgressUpdate: vi.fn().mockResolvedValue(undefined),
+			onChunkStateChange: vi.fn(),
+		});
+
+		// Variable-sized chunks, like a real MediaRecorder. The OLD code flushed the WHOLE
+		// buffer each time it crossed 5 MiB, so parts came out unequal (here 6 MiB then 8 MiB).
+		// R2 rejects that with "InvalidPart: All non-trailing parts must have the same length",
+		// which stuck every multi-part recording in "Processing" forever.
+		const MiB = 1024 * 1024;
+		let total = 0;
+		for (const size of [4 * MiB, 2 * MiB, 4 * MiB, 4 * MiB, 3 * MiB]) {
+			total += size;
+			uploader.handleChunk(makeBlob(size, "video/webm"), total);
+		}
+
+		await uploader.finalize({
+			durationSeconds: 20,
+			width: 1920,
+			height: 1080,
+			subpath: "raw-upload.webm",
+		});
+
+		const sorted = [...completeParts].sort(
+			(a, b) => a.partNumber - b.partNumber,
+		);
+		// Genuinely multi-part (the whole point — single-part uploads never hit the bug).
+		expect(sorted.length).toBeGreaterThanOrEqual(3);
+		// Every non-trailing part is EXACTLY the same size; the trailing part is the remainder.
+		for (const part of sorted.slice(0, -1)) {
+			expect(part.size).toBe(MIN_PART);
+		}
+		expect(sorted[sorted.length - 1].size).toBeLessThanOrEqual(MIN_PART);
+		// No bytes lost or duplicated in the re-slicing.
+		expect(sorted.reduce((n, p) => n + p.size, 0)).toBe(total);
 	});
 
 	it("normalizes multipart initiate content type before creating the upload", async () => {
@@ -720,6 +800,14 @@ describe("InstantRecordingUploader", () => {
 			sendProgressUpdate: vi.fn().mockResolvedValue(undefined),
 			onOverflow,
 		});
+
+		// The oversized buffer is sliced into fixed 5 MiB parts; enqueuing them piles up
+		// pending-upload bytes until the 128 MiB backlog guard trips mid-flush (still
+		// synchronously, inside handleChunk). Outcomes are "pending" so the few parts that
+		// start uploading before the throw just hang harmlessly rather than erroring.
+		MockXMLHttpRequest.setOutcomes(
+			Array.from({ length: 8 }, () => ({ type: "pending" as const })),
+		);
 
 		const chunk = makeBlob(OVERFLOW_PART_BYTES, "video/webm;codecs=vp9,opus");
 
