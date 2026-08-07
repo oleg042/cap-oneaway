@@ -6,6 +6,8 @@ import type {
 } from "@cap/recorder-core/recorder-types";
 import clsx from "clsx";
 import {
+	Eye,
+	EyeOff,
 	Mic,
 	MicOff,
 	MoreVertical,
@@ -56,6 +58,7 @@ interface InProgressRecordingBarProps {
 	durationMs: number;
 	hasAudioTrack: boolean;
 	micDeviceId?: string | null; // selected mic → live level meter while recording
+	getPreviewStream?: () => MediaStream | null; // live in-tab preview of what's being captured
 	chunkUploads: ChunkUploadState[];
 	onStop: () => void | Promise<void>;
 	onPause?: () => void | Promise<void>;
@@ -72,6 +75,7 @@ export const InProgressRecordingBar = ({
 	durationMs,
 	hasAudioTrack,
 	micDeviceId,
+	getPreviewStream,
 	chunkUploads,
 	onStop,
 	onPause,
@@ -81,6 +85,10 @@ export const InProgressRecordingBar = ({
 	errorDownload,
 }: InProgressRecordingBarProps) => {
 	const [mounted, setMounted] = useState(false);
+	// Live in-tab preview of what's being captured. Expanded by default so you immediately SEE the capture is
+	// working right after picking the screen/window; collapsible to a tiny footprint (and to avoid the
+	// infinity-mirror when you're capturing the very screen the recorder tab is on).
+	const [showPreview, setShowPreview] = useState(true);
 	const [position, setPosition] = useState({ x: 0, y: 24 });
 	const [isDragging, setIsDragging] = useState(false);
 	const dragOffsetRef = useRef({ x: 0, y: 0 });
@@ -263,7 +271,7 @@ export const InProgressRecordingBar = ({
 				// `dark` so the bar's Radix gray scale resolves dark regardless of the host page's theme —
 				// otherwise bg-gray-1 renders white in the portal embed (the bar is a document.body portal
 				// that can miss the .dark ancestor). A floating recording control bar is always dark.
-				"dark fixed z-[650] pointer-events-auto animate-in fade-in",
+				"dark fixed z-[650] flex flex-col items-center gap-2 pointer-events-auto animate-in fade-in",
 				isDragging ? "cursor-grabbing" : "cursor-move",
 			)}
 			style={{ left: `${position.x}px`, top: `${position.y}px` }}
@@ -348,6 +356,22 @@ export const InProgressRecordingBar = ({
 								)}
 							</div>
 
+							{getPreviewStream && (
+								<ActionButton
+									data-no-drag
+									onClick={() => setShowPreview((v) => !v)}
+									aria-label={
+										showPreview ? "Hide live preview" : "Show live preview"
+									}
+									className={showPreview ? "text-[var(--cobalt)]" : undefined}
+								>
+									{showPreview ? (
+										<Eye className="size-5" />
+									) : (
+										<EyeOff className="size-5" />
+									)}
+								</ActionButton>
+							)}
 							<ActionButton
 								data-no-drag
 								onClick={handlePauseToggle}
@@ -381,8 +405,58 @@ export const InProgressRecordingBar = ({
 					<MoreVertical className="size-5" />
 				</div>
 			</div>
+			{showPreview && getPreviewStream && !isErrorState && (
+				<LivePreview getStream={getPreviewStream} />
+			)}
 		</div>,
 		document.body,
+	);
+};
+
+// Live, muted, in-tab preview of the exact display stream being captured — read-only (srcObject only,
+// never played back). Sized small to stay unobtrusive and to blunt the infinity-mirror when the captured
+// screen happens to contain the recorder tab. `data-no-drag` so it doesn't hijack the bar's drag.
+const LivePreview = ({ getStream }: { getStream: () => MediaStream | null }) => {
+	const videoRef = useRef<HTMLVideoElement>(null);
+	useEffect(() => {
+		const v = videoRef.current;
+		if (!v) return;
+		let cancelled = false;
+		const attach = () => {
+			if (cancelled) return;
+			const stream = getStream();
+			if (stream) {
+				v.srcObject = stream;
+				void v.play().catch(() => {});
+			} else {
+				setTimeout(attach, 300); // capture stream not live yet — retry briefly
+			}
+		};
+		attach();
+		return () => {
+			cancelled = true;
+			if (v) v.srcObject = null;
+		};
+		// getStream identity changes each parent render; attach-once on mount is intentional.
+		// biome-ignore lint/correctness/useExhaustiveDependencies: attach once on mount
+	}, []);
+	return (
+		<div
+			data-no-drag
+			className="overflow-hidden rounded-[0.75rem] border border-gray-5 bg-black shadow-[0_16px_60px_rgba(0,0,0,0.35)]"
+		>
+			<video
+				ref={videoRef}
+				muted
+				autoPlay
+				playsInline
+				className="block h-auto max-h-[190px] w-[300px] bg-black object-contain"
+			/>
+			<div className="flex items-center gap-1.5 border-t border-gray-5 bg-gray-1 px-2 py-1 text-[10px] font-medium text-gray-11">
+				<span className="inline-block size-1.5 animate-pulse rounded-full bg-red-500" />
+				Live — what you're capturing
+			</div>
+		</div>
 	);
 };
 

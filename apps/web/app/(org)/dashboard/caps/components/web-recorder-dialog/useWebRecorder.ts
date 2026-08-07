@@ -1807,5 +1807,8 @@ export const useWebRecorder = ({
 		supportsDisplayRecording,
 		supportCheckCompleted,
 		screenCaptureWarning,
+		// Live in-tab preview of what's being captured — returns the raw display stream (set at record
+		// start), read-only. Muted preview only; never played back. Null until a capture is live.
+		getCaptureStream: () => displayStreamRef.current ?? null,
 	};
 };

@@ -197,6 +197,7 @@ export const WebRecorderDialog = ({
 		supportsDisplayRecording,
 		supportCheckCompleted,
 		screenCaptureWarning,
+		getCaptureStream,
 		startRecording,
 		pauseRecording,
 		resumeRecording,
@@ -580,6 +581,7 @@ export const WebRecorderDialog = ({
 					durationMs={recordingTimerDisplayMs}
 					hasAudioTrack={hasAudioTrack}
 					micDeviceId={selectedMicId}
+					getPreviewStream={getCaptureStream}
 					chunkUploads={chunkUploads}
 					errorDownload={errorDownload}
 					onStop={handleStopClick}
