@@ -2765,21 +2765,27 @@ function MediaPlayerPlaybackSpeedDial(
 		return 0;
 	}, [mediaDuration, seekableEnd, fallbackDuration]);
 
-	const appliedDefaultRef = React.useRef(false);
+	// Persist the intended playback rate across media reloads (re-presign, replay, src swap). The
+	// browser resets <video>.playbackRate to 1 on load, so applying the default only ONCE left it
+	// stuck at 1x after the first watch. Track the desired rate — the org default, or the user's own
+	// pick — and re-assert it whenever the element's rate falls back to 1.
+	const desiredRateRef = React.useRef(normalizePlaybackSpeed(defaultSpeed));
 	React.useEffect(() => {
-		if (appliedDefaultRef.current) return;
-		appliedDefaultRef.current = true;
-		const normalized = normalizePlaybackSpeed(defaultSpeed);
-		if (normalized !== 1) {
+		desiredRateRef.current = normalizePlaybackSpeed(defaultSpeed);
+	}, [defaultSpeed]);
+	React.useEffect(() => {
+		const desired = desiredRateRef.current;
+		if (desired !== 1 && mediaPlaybackRate === 1) {
 			dispatch({
 				type: MediaActionTypes.MEDIA_PLAYBACK_RATE_REQUEST,
-				detail: normalized,
+				detail: desired,
 			});
 		}
-	}, [defaultSpeed, dispatch]);
+	}, [mediaPlaybackRate, dispatch]);
 
 	const onSelectSpeed = React.useCallback(
 		(rate: number) => {
+			desiredRateRef.current = rate; // remember the choice so it survives reloads too
 			dispatch({
 				type: MediaActionTypes.MEDIA_PLAYBACK_RATE_REQUEST,
 				detail: rate,
