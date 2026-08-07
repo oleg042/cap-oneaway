@@ -20,6 +20,14 @@ RUN pnpm run build:web
 FROM base AS runner
 WORKDIR /app
 
+# OneAway: the chunked transcription path (lib/cloudflare-transcribe.ts) shells out to ffmpeg to probe
+# duration and slice per-window audio. ffmpeg-static's binary is NOT traced into the Next standalone
+# output, and the main audio extraction runs on the separate media-server service — so the web runner
+# shipped with no ffmpeg at all, and every chunked transcription threw "FFmpeg binary not found". Install
+# a real ffmpeg; getFfmpegPath() finds it at /usr/bin/ffmpeg. Without this, chunking always falls back to
+# the slower single pass.
+RUN apk add --no-cache ffmpeg
+
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 
