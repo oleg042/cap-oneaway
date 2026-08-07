@@ -367,7 +367,10 @@ export const WebRecorderDialog = ({
 				</DialogTrigger>
 				<DialogContent
 					ref={dialogContentRef}
-					className={`${showPreviewColumn ? "w-[760px]" : "w-[300px]"} border-none bg-transparent p-0 [&>button]:hidden`}
+					// !max-w-[760px] overrides the base DialogContent's `max-w-md` (448px), which would
+					// otherwise cram the two columns. (Can't use an inline style — the base hardcodes its
+					// centering transform in `style`, and props.style would replace it.)
+					className={`${showPreviewColumn ? "w-[760px] !max-w-[760px]" : "w-[300px]"} border-none bg-transparent p-0 [&>button]:hidden`}
 					onPointerDownOutside={handlePointerDownOutside}
 					onFocusOutside={handleFocusOutside}
 					onInteractOutside={handleInteractOutside}
