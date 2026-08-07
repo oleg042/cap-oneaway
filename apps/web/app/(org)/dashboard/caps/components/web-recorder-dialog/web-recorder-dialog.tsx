@@ -12,11 +12,13 @@ import { MonitorIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDashboardContext } from "../../../Contexts";
+import { CameraLaunchPositioner } from "./CameraLaunchPositioner";
 import {
 	CameraPreviewWindow,
 	type CameraPreviewWindowHandle,
 } from "./CameraPreviewWindow";
 import { CameraSelector } from "./CameraSelector";
+import { type BubblePosition, isCompositorSupported } from "./cameraCompositor";
 import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { InProgressRecordingBar } from "./InProgressRecordingBar";
@@ -78,6 +80,14 @@ export const WebRecorderDialog = ({
 	const startSoundRef = useRef<HTMLAudioElement | null>(null);
 	const stopSoundRef = useRef<HTMLAudioElement | null>(null);
 	const cameraPreviewRef = useRef<CameraPreviewWindowHandle>(null);
+	// Composited camera: where the bubble bakes onto a screen recording (set on the launch positioner), and
+	// a live preview stream the positioner draws from.
+	const [bubblePosition, setBubblePosition] = useState<BubblePosition>({
+		mode: "corner",
+		corner: "bl",
+	});
+	const [previewCameraStream, setPreviewCameraStream] =
+		useState<MediaStream | null>(null);
 
 	useEffect(() => {
 		if (typeof window === "undefined") {
@@ -186,6 +196,7 @@ export const WebRecorderDialog = ({
 		systemAudioEnabled,
 		recordingMode,
 		selectedCameraId,
+		bubblePosition,
 		isProUser: user.isPro,
 		onRecordingSurfaceDetected: (mode) => {
 			setRecordingMode(mode);
@@ -273,9 +284,54 @@ export const WebRecorderDialog = ({
 	};
 
 	const showInProgressBar = isRecording || isBusy || phase === "error";
+	const canComposite = isCompositorSupported();
+	// Launch positioner: screen capture + camera on + compositor available → show the drag-to-position
+	// preview (the camera is baked onto the video, not shown live), instead of a PiP self-view.
+	const wantsPositioner =
+		!!selectedCameraId && recordingMode !== "camera" && canComposite;
+	const showPositioner = wantsPositioner && !isRecording && !isBusy;
+	// Native PiP self-view: kept for camera-only mode, and as the fallback when the compositor is unavailable
+	// (non-Chromium) so screen recordings still get a camera. Never shown when we're compositing.
 	const showCameraPreview =
-		selectedCameraId &&
+		!!selectedCameraId &&
+		!wantsPositioner &&
 		(recordingMode !== "camera" || (!isSettingUp && !isBusy));
+
+	// Live camera stream for the launch positioner (its own acquisition; Chrome allows the recorder's
+	// compositor to open the same device again at record time). Released as soon as the positioner hides.
+	useEffect(() => {
+		if (!showPositioner || !selectedCameraId) {
+			setPreviewCameraStream(null);
+			return;
+		}
+		let cancelled = false;
+		let acquired: MediaStream | null = null;
+		navigator.mediaDevices
+			.getUserMedia({
+				video: { deviceId: { exact: selectedCameraId } },
+				audio: false,
+			})
+			.then((stream) => {
+				if (cancelled) {
+					stream.getTracks().forEach((t) => {
+						t.stop();
+					});
+					return;
+				}
+				acquired = stream;
+				setPreviewCameraStream(stream);
+			})
+			.catch(() => {
+				/* camera unavailable — the positioner shows an empty bubble */
+			});
+		return () => {
+			cancelled = true;
+			setPreviewCameraStream(null);
+			acquired?.getTracks().forEach((t) => {
+				t.stop();
+			});
+		};
+	}, [showPositioner, selectedCameraId]);
 	const recordingTimerDisplayMs = user.isPro
 		? durationMs
 		: Math.max(0, FREE_PLAN_MAX_RECORDING_MS - durationMs);
@@ -349,33 +405,34 @@ export const WebRecorderDialog = ({
 									onCameraChange={handleCameraChange}
 									onRefreshDevices={refreshCameras}
 								/>
-								{/* The camera floats as a Picture-in-Picture window that only gets captured when you
-								    share your WHOLE screen. For a Window/Tab share it stays visible to you but is
-								    NOT in the recording — warn unmissably so nobody records a faceless walkthrough. */}
-								{(recordingMode === "window" || recordingMode === "tab") &&
-									selectedCameraId &&
-									!isRecording &&
-									!isBusy && (
+								{/* Composited camera: the bubble is painted straight onto the recorded video at the
+								    spot picked here, for ANY screen mode (fullscreen/window/tab) — so it's positioned,
+								    not warned about. Hidden once recording starts (it was placed up front). */}
+								{showPositioner && (
+									<div
+										className="flex flex-col gap-2"
+										data-testid="tape-camera-position"
+									>
+										<CameraLaunchPositioner
+											cameraStream={previewCameraStream}
+											position={bubblePosition}
+											onChange={setBubblePosition}
+										/>
 										<div
-											data-testid="tape-camera-warning"
-											className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12"
+											data-testid="tape-camera-note"
+											className="rounded-md border border-gray-5 bg-gray-2 px-3 py-2.5 text-xs leading-relaxed text-gray-11"
 										>
-											<span className="font-medium">
-												Your camera won’t be in this recording.
-											</span>{" "}
-											A window or tab capture can’t include the floating camera
-											— it’s in the video only when you{" "}
-											<button
-												type="button"
-												disabled={isBusy}
-												onClick={() => setRecordingMode("fullscreen")}
-												className="font-medium underline underline-offset-2 hover:text-amber-11 disabled:opacity-60"
-											>
-												share your whole screen
-											</button>
-											.
+											<p className="font-medium text-gray-12">
+												Position your camera on the recording
+											</p>
+											<p className="mt-0.5">
+												Drag the bubble above to place it. You won’t see your
+												camera on your screen while you record — it’s painted
+												straight onto the video at the spot you pick.
+											</p>
 										</div>
-									)}
+									</div>
+								)}
 								<MicrophoneSelector
 									selectedMicId={selectedMicId}
 									availableMics={availableMics}

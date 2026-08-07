@@ -42,6 +42,11 @@ import { ThumbnailRequest } from "@/lib/Requests/ThumbnailRequest";
 import { uploadWithTarget } from "@/utils/upload-target";
 import { useUploadingContext } from "../../UploadingContext";
 import { sendProgressUpdate } from "../sendProgressUpdate";
+import {
+	type BubblePosition,
+	createCameraCompositor,
+	isCompositorSupported,
+} from "./cameraCompositor";
 import type { RecordingMode } from "./RecordingModeSelector";
 import {
 	canConvertToMp4InBrowser,
@@ -74,6 +79,9 @@ interface UseWebRecorderOptions {
 	systemAudioEnabled: boolean;
 	recordingMode: RecordingMode;
 	selectedCameraId: string | null;
+	// Where the camera bubble bakes onto a screen recording (set on the launch positioner). Composited via
+	// the WebCodecs breakout box so it survives the recorder tab being hidden.
+	bubblePosition?: BubblePosition;
 	isProUser: boolean;
 	onPhaseChange?: (phase: RecorderPhase) => void;
 	onRecordingSurfaceDetected?: (mode: RecordingMode) => void;
@@ -200,6 +208,7 @@ export const useWebRecorder = ({
 	systemAudioEnabled,
 	recordingMode,
 	selectedCameraId,
+	bubblePosition,
 	isProUser,
 	onPhaseChange,
 	onRecordingSurfaceDetected,
@@ -229,6 +238,7 @@ export const useWebRecorder = ({
 	const {
 		displayStreamRef,
 		cameraStreamRef,
+		cameraCompositorRef,
 		micStreamRef,
 		mixedStreamRef,
 		audioContextRef,
@@ -236,6 +246,16 @@ export const useWebRecorder = ({
 		detectionCleanupRef,
 		cleanupStreams,
 	} = useStreamManagement();
+
+	// Latest bubble position, read by the compositor's getConfig at frame time so a launch-screen re-drag
+	// (before record) is reflected without re-creating the compositor.
+	const bubblePositionRef = useRef<BubblePosition>(
+		bubblePosition ?? { mode: "corner", corner: "bl" },
+	);
+	bubblePositionRef.current = bubblePosition ?? {
+		mode: "corner",
+		corner: "bl",
+	};
 
 	const {
 		durationMs,
@@ -1053,8 +1073,53 @@ export const useWebRecorder = ({
 				audioTracks = micStream?.getAudioTracks() ?? [];
 			}
 
+			// Camera compositing: when the camera is ON for a SCREEN capture, paint it as a bubble straight
+			// onto the recorded video at the launch-positioned spot. WebCodecs breakout box → survives the
+			// recorder tab being hidden (unlike rAF/canvas.captureStream). ANY failure falls back to the raw
+			// screen track so recording never breaks. (recordingMode "camera" already records the camera
+			// fullscreen, so compositing is skipped there.)
+			let recordVideoTracks = videoStream.getVideoTracks();
+			if (
+				selectedCameraId &&
+				recordingMode !== "camera" &&
+				isCompositorSupported()
+			) {
+				try {
+					const cam = await navigator.mediaDevices.getUserMedia({
+						video: { deviceId: { exact: selectedCameraId } },
+						audio: false,
+					});
+					cameraStreamRef.current = cam;
+					const settings = recordVideoTracks[0]?.getSettings() ?? {};
+					const compositor = await createCameraCompositor({
+						screenStream: videoStream,
+						cameraStream: cam,
+						width: settings.width ?? 1280,
+						height: settings.height ?? 720,
+						fps: Math.round(settings.frameRate ?? 30),
+						getConfig: () => ({
+							position: bubblePositionRef.current,
+							mirror: true,
+						}),
+					});
+					cameraCompositorRef.current = compositor;
+					recordVideoTracks = [compositor.videoTrack];
+				} catch (compositeError) {
+					console.warn(
+						"[recorder] camera compositing unavailable — recording screen only",
+						compositeError,
+					);
+					cameraStreamRef.current?.getTracks().forEach((t) => {
+						t.stop();
+					});
+					cameraStreamRef.current = null;
+					cameraCompositorRef.current = null;
+					recordVideoTracks = videoStream.getVideoTracks();
+				}
+			}
+
 			const mixedStream = new MediaStream([
-				...videoStream.getVideoTracks(),
+				...recordVideoTracks,
 				...audioTracks,
 			]);
 

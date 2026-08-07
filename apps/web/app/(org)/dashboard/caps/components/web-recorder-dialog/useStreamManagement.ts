@@ -1,10 +1,14 @@
 import { useCallback, useRef } from "react";
+import type { CameraCompositorController } from "./cameraCompositor";
 
 export const useStreamManagement = () => {
 	const displayStreamRef = useRef<MediaStream | null>(null);
 	const cameraStreamRef = useRef<MediaStream | null>(null);
 	const micStreamRef = useRef<MediaStream | null>(null);
 	const mixedStreamRef = useRef<MediaStream | null>(null);
+	// Round-camera WebCodecs compositor for screen+camera recordings. Torn down FIRST in cleanupStreams so
+	// its draw loop + hidden <video>/track-generator release before the underlying camera/screen tracks stop.
+	const cameraCompositorRef = useRef<CameraCompositorController | null>(null);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const detectionTimeoutsRef = useRef<number[]>([]);
@@ -27,6 +31,16 @@ export const useStreamManagement = () => {
 
 	const cleanupStreams = useCallback(() => {
 		clearDetectionTracking();
+		// Destroy the compositor FIRST: stop its draw loop + release its hidden <video>/generator before the
+		// camera/screen tracks below are stopped, so it never reads from an already-stopped track.
+		if (cameraCompositorRef.current) {
+			try {
+				cameraCompositorRef.current.destroy();
+			} catch {
+				/* ignore */
+			}
+			cameraCompositorRef.current = null;
+		}
 		const stopTracks = (stream: MediaStream | null) => {
 			stream?.getTracks().forEach((track) => {
 				track.stop();
@@ -54,6 +68,7 @@ export const useStreamManagement = () => {
 	return {
 		displayStreamRef,
 		cameraStreamRef,
+		cameraCompositorRef,
 		micStreamRef,
 		mixedStreamRef,
 		audioContextRef,
