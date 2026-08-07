@@ -353,7 +353,9 @@ export const WebRecorderDialog = ({
 								    share your WHOLE screen. For a Window/Tab share it stays visible to you but is
 								    NOT in the recording — warn unmissably so nobody records a faceless walkthrough. */}
 								{(recordingMode === "window" || recordingMode === "tab") &&
-									selectedCameraId && (
+									selectedCameraId &&
+									!isRecording &&
+									!isBusy && (
 										<div
 											data-testid="tape-camera-warning"
 											className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12"

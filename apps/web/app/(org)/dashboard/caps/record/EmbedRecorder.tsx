@@ -5,13 +5,10 @@ import { WebRecorderDialog } from "../components/web-recorder-dialog/web-recorde
 
 // Minimal OneAway-branded recorder shown when the portal opens this route (?embed=1) in a NEW TAB. No
 // Cap chooser, desktop-app upsell, or FAQ — just a clean full-page branded recorder. Cap remains the
-// upload/storage/transcription engine underneath. `portalOrigin` (passed by the portal through the SSO
-// redirect) is the exact origin we message on completion via window.opener, then this tab self-closes.
-export function EmbedRecorder({
-	portalOrigin,
-}: {
-	portalOrigin?: string;
-} = {}) {
+// upload/storage/transcription engine underneath. On completion this tab simply self-closes; the portal
+// surfaces the finished tape by reconciling from Cap server-side (it polls), so there's no cross-tab
+// postMessage — nothing for a forged opener to receive a share URL from.
+export function EmbedRecorder() {
 	// The recorder DIALOG + floating control bar are Radix portals mounted at document.body — OUTSIDE any
 	// wrapper we style — so a `.dark` class on a container can't reach them. Stamp `.dark` on the document
 	// root while the embed is mounted so the whole surface (dialog included) matches the dark portal.
@@ -50,42 +47,11 @@ export function EmbedRecorder({
 			</p>
 			<WebRecorderDialog
 				embed
-				onRecorded={(info) => {
-					// The portal opened this recorder in a new tab, so window.opener IS the portal tab. Tell it
-					// the tape is done (it optimistically inserts + selects the row), then close this tab so the
-					// user is left back on their content/portal tab. Message ONLY the exact portalOrigin the
-					// portal passed through the SSO redirect — never "*", since the payload carries a share URL.
-					// Falls back to window.parent if this is ever iframed instead of opened as a tab.
-					let target: string | null = null;
-					try {
-						if (portalOrigin && new URL(portalOrigin).origin === portalOrigin) {
-							target = portalOrigin;
-						}
-					} catch {
-						target = null;
-					}
+				onRecorded={() => {
+					// The portal opened this recorder in a new tab and reconciles the finished tape server-side
+					// (it polls Cap), so there's nothing to hand back here — just close this tab so the user
+					// lands back on their content/portal tab. No cross-tab postMessage → no share URL to leak.
 					const opener = (window.opener as Window | null) ?? null;
-					const dest =
-						opener && opener !== window
-							? opener
-							: window.parent !== window
-								? window.parent
-								: null;
-					if (dest && target) {
-						try {
-							dest.postMessage(
-								{
-									type: "tape:recorded",
-									videoId: info.videoId,
-									shareUrl: info.shareUrl,
-								},
-								target,
-							);
-						} catch {
-							/* ignore */
-						}
-					}
-					// Standalone tab opened by the portal → hand off then close.
 					if (opener && opener !== window) {
 						setTimeout(() => {
 							try {
