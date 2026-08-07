@@ -2,18 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+	type BubbleCorner,
 	type BubblePosition,
 	computeBubbleMetrics,
-	normalizedFromPoint,
 	PREVIEW_GEOM,
 	resolveBubbleCenter,
 } from "./cameraCompositor";
 
-// Launch-screen camera positioner. A large 16:9 preview of the recording frame with the LIVE camera drawn
-// as the bubble exactly where it will composite onto the video — drag it anywhere to place it. Uses the
-// compositor's own geometry (PREVIEW_GEOM + resolveBubbleCenter/normalizedFromPoint) so the spot picked
-// here is the spot it bakes. The camera is NOT shown during recording, so this is the ONE place to position
-// it — hence the explicit note the parent renders beneath.
+const CORNERS: BubbleCorner[] = ["tl", "tr", "bl", "br"];
+
+const activeCorner = (p: BubblePosition): BubbleCorner =>
+	p.mode === "corner"
+		? p.corner
+		: (`${p.ny < 0.5 ? "t" : "b"}${p.nx < 0.5 ? "l" : "r"}` as BubbleCorner);
+
+// Launch-screen camera positioner. A preview of the recording frame with your LIVE camera as the bubble,
+// snapping to one of FOUR corners — click a corner to place it; the other three show a ghost target so it's
+// obvious you can move it. Uses the compositor's own geometry so the corner you pick is exactly where it
+// bakes. The camera is NOT shown during recording — this is the one place you position it.
 export function CameraLaunchPositioner({
 	cameraStream,
 	position,
@@ -30,9 +36,10 @@ export function CameraLaunchPositioner({
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const posRef = useRef(position);
-	const draggingRef = useRef(false);
-	const [dragging, setDragging] = useState(false);
+	const hoverRef = useRef<BubbleCorner | null>(null);
+	const [hoverCorner, setHoverCorner] = useState<BubbleCorner | null>(null);
 	posRef.current = position;
+	hoverRef.current = hoverCorner;
 
 	// Hidden <video> we sample the live camera from.
 	useEffect(() => {
@@ -57,7 +64,7 @@ export function CameraLaunchPositioner({
 		if (cameraStream) v.play().catch(() => {});
 	}, [cameraStream]);
 
-	// rAF draw loop — this is the visible launch screen, so rAF is fine (no background-tab concern here).
+	// rAF draw loop — visible launch screen, so rAF is fine.
 	useEffect(() => {
 		let raf = 0;
 		const draw = () => {
@@ -88,57 +95,67 @@ export function CameraLaunchPositioner({
 					ctx.strokeStyle = "rgba(255,255,255,0.06)";
 					ctx.lineWidth = 1;
 					ctx.strokeRect(0.5, 0.5, cssW - 1, cssH - 1);
-					ctx.fillStyle = "rgba(255,255,255,0.14)";
-					ctx.font = "500 12px ui-sans-serif, system-ui, sans-serif";
-					ctx.textAlign = "center";
-					ctx.textBaseline = "middle";
-					ctx.fillText("your screen", cssW / 2, cssH / 2);
 
 					const { r } = computeBubbleMetrics(cssW, cssH, PREVIEW_GEOM);
-					const { cx, cy } = resolveBubbleCenter(
-						posRef.current,
-						cssW,
-						cssH,
-						PREVIEW_GEOM,
-					);
-					// Soft shadow disc (the only edge treatment — no ring).
-					ctx.save();
-					ctx.beginPath();
-					ctx.arc(cx, cy, r, 0, Math.PI * 2);
-					ctx.shadowColor = "rgba(0,0,0,0.55)";
-					ctx.shadowBlur = r * 0.3;
-					ctx.shadowOffsetY = r * 0.06;
-					ctx.fillStyle = "#000";
-					ctx.fill();
-					ctx.restore();
-					// Clip to circle + draw the live camera (object-fit: cover, mirrored).
-					ctx.save();
-					ctx.beginPath();
-					ctx.arc(cx, cy, r, 0, Math.PI * 2);
-					ctx.clip();
-					if (video && video.readyState >= 2 && video.videoWidth) {
-						const vw = video.videoWidth;
-						const vh = video.videoHeight;
-						const scale = Math.max((2 * r) / vw, (2 * r) / vh);
-						const dw = vw * scale;
-						const dh = vh * scale;
-						ctx.translate(cx, cy);
-						if (mirror) ctx.scale(-1, 1);
-						ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
-					} else {
-						ctx.fillStyle = "#1c1c1c";
-						ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
-					}
-					ctx.restore();
-					// Brand ring while dragging, as a grab affordance.
-					if (draggingRef.current) {
-						ctx.save();
-						ctx.beginPath();
-						ctx.arc(cx, cy, r + 2, 0, Math.PI * 2);
-						ctx.strokeStyle = "rgba(253,79,3,0.95)";
-						ctx.lineWidth = 2.5;
-						ctx.stroke();
-						ctx.restore();
+					const active = activeCorner(posRef.current);
+					for (const corner of CORNERS) {
+						const { cx, cy } = resolveBubbleCenter(
+							{ mode: "corner", corner },
+							cssW,
+							cssH,
+							PREVIEW_GEOM,
+						);
+						if (corner === active) {
+							// Soft shadow disc + the live camera bubble (no ring).
+							ctx.save();
+							ctx.beginPath();
+							ctx.arc(cx, cy, r, 0, Math.PI * 2);
+							ctx.shadowColor = "rgba(0,0,0,0.55)";
+							ctx.shadowBlur = r * 0.3;
+							ctx.shadowOffsetY = r * 0.06;
+							ctx.fillStyle = "#000";
+							ctx.fill();
+							ctx.restore();
+							ctx.save();
+							ctx.beginPath();
+							ctx.arc(cx, cy, r, 0, Math.PI * 2);
+							ctx.clip();
+							if (video && video.readyState >= 2 && video.videoWidth) {
+								const vw = video.videoWidth;
+								const vh = video.videoHeight;
+								const scale = Math.max((2 * r) / vw, (2 * r) / vh);
+								const dw = vw * scale;
+								const dh = vh * scale;
+								ctx.translate(cx, cy);
+								if (mirror) ctx.scale(-1, 1);
+								ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
+							} else {
+								ctx.fillStyle = "#1c1c1c";
+								ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+							}
+							ctx.restore();
+						} else {
+							// Ghost target: dashed ring + "+" — click to move the camera here.
+							const hovered = hoverRef.current === corner;
+							ctx.save();
+							ctx.beginPath();
+							ctx.arc(cx, cy, r, 0, Math.PI * 2);
+							ctx.setLineDash([5, 5]);
+							ctx.lineWidth = 1.5;
+							ctx.strokeStyle = hovered
+								? "rgba(253,79,3,0.95)"
+								: "rgba(255,255,255,0.26)";
+							ctx.stroke();
+							ctx.setLineDash([]);
+							ctx.fillStyle = hovered
+								? "rgba(253,79,3,0.95)"
+								: "rgba(255,255,255,0.38)";
+							ctx.font = "600 18px ui-sans-serif, system-ui, sans-serif";
+							ctx.textAlign = "center";
+							ctx.textBaseline = "middle";
+							ctx.fillText("+", cx, cy);
+							ctx.restore();
+						}
 					}
 				}
 			}
@@ -148,54 +165,33 @@ export function CameraLaunchPositioner({
 		return () => cancelAnimationFrame(raf);
 	}, [mirror]);
 
-	const applyPointer = (clientX: number, clientY: number) => {
+	const cornerAt = (clientX: number, clientY: number): BubbleCorner | null => {
 		const canvas = canvasRef.current;
-		if (!canvas) return;
+		if (!canvas) return null;
 		const rect = canvas.getBoundingClientRect();
-		const { nx, ny } = normalizedFromPoint(
-			clientX - rect.left,
-			clientY - rect.top,
-			rect.width,
-			rect.height,
-			PREVIEW_GEOM,
-		);
-		onChange({ mode: "free", nx, ny });
+		const x = clientX - rect.left;
+		const y = clientY - rect.top;
+		if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+		return `${y < rect.height / 2 ? "t" : "b"}${x < rect.width / 2 ? "l" : "r"}` as BubbleCorner;
 	};
 
 	return (
 		<canvas
 			ref={canvasRef}
 			data-testid="camera-launch-positioner"
-			aria-label="Drag to position your camera on the recording"
-			onPointerDown={(e) => {
-				draggingRef.current = true;
-				setDragging(true);
-				try {
-					e.currentTarget.setPointerCapture(e.pointerId);
-				} catch {
-					/* ignore */
-				}
-				applyPointer(e.clientX, e.clientY);
-			}}
-			onPointerMove={(e) => {
-				if (draggingRef.current) applyPointer(e.clientX, e.clientY);
-			}}
-			onPointerUp={(e) => {
-				draggingRef.current = false;
-				setDragging(false);
-				try {
-					e.currentTarget.releasePointerCapture(e.pointerId);
-				} catch {
-					/* ignore */
-				}
+			aria-label="Click a corner to place your camera on the recording"
+			onPointerMove={(e) => setHoverCorner(cornerAt(e.clientX, e.clientY))}
+			onPointerLeave={() => setHoverCorner(null)}
+			onClick={(e) => {
+				const corner = cornerAt(e.clientX, e.clientY);
+				if (corner) onChange({ mode: "corner", corner });
 			}}
 			className={className}
 			style={{
 				width: "100%",
-				aspectRatio: "16 / 9",
-				borderRadius: 12,
+				height: "100%",
 				display: "block",
-				cursor: dragging ? "grabbing" : "grab",
+				cursor: "pointer",
 				touchAction: "none",
 			}}
 		/>

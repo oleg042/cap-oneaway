@@ -163,6 +163,21 @@ export const WebRecorderDialog = ({
 		}
 	}, [recordingMode, selectedCameraId, availableCameras, setSelectedCameraId]);
 
+	// Camera ON by default: the first time cameras are available after the dialog opens, select one. Guarded
+	// to fire once per open so turning the camera off during a session sticks (we don't re-enable it).
+	const cameraDefaultedRef = useRef(false);
+	useEffect(() => {
+		if (!open) {
+			cameraDefaultedRef.current = false;
+			return;
+		}
+		if (cameraDefaultedRef.current || availableCameras.length === 0) return;
+		cameraDefaultedRef.current = true;
+		if (selectedCameraId === null) {
+			setSelectedCameraId(availableCameras[0]?.deviceId ?? null);
+		}
+	}, [open, availableCameras, selectedCameraId, setSelectedCameraId]);
+
 	const {
 		phase,
 		durationMs,
@@ -426,7 +441,7 @@ export const WebRecorderDialog = ({
 												Position your camera on the recording
 											</p>
 											<p className="mt-0.5">
-												Drag the bubble above to place it. You won’t see your
+												Click a corner above to place it. You won’t see your
 												camera on your screen while you record — it’s painted
 												straight onto the video at the spot you pick.
 											</p>
