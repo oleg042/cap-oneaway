@@ -628,6 +628,20 @@ export function EditVideoClient({
 	hasExistingEdits: boolean;
 }) {
 	const router = useRouter();
+	// This editor is only ever reached via the portal's SSO edit hop, and the portal is dark — so force the
+	// dark Radix theme on <html> (portaled dialogs pick it up too) while it's mounted, then restore. The
+	// editor's chrome is already Radix-gray-token based, so this flips it dark rather than white.
+	useEffect(() => {
+		const el = document.documentElement;
+		const had = el.classList.contains("dark");
+		el.classList.add("dark");
+		const prevBg = document.body.style.background;
+		document.body.style.background = "#0a0a0a";
+		return () => {
+			if (!had) el.classList.remove("dark");
+			document.body.style.background = prevBg;
+		};
+	}, []);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const timelineRef = useRef<HTMLDivElement | null>(null);
 	const scrollContainerRef = useRef<HTMLDivElement | null>(null);
