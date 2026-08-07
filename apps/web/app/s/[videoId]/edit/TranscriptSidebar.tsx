@@ -784,7 +784,7 @@ export function TranscriptSidebar({
 						<button
 							type="button"
 							onClick={deleteSelection}
-							className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-gray-12 px-4 text-xs font-semibold text-white transition hover:bg-gray-11 active:bg-gray-10"
+							className="inline-flex h-9 min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--orange-9)] px-4 text-xs font-semibold text-white transition hover:bg-[var(--orange-10)] active:bg-[var(--orange-10)]"
 						>
 							<Trash2 className="size-3.5" aria-hidden />
 							<span className="truncate">

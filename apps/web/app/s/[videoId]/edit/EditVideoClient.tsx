@@ -75,7 +75,6 @@ import {
 	undoTimelineHistory,
 	type VideoTimelineState,
 } from "@/lib/video-edits";
-import { navigateWithTransition } from "@/utils/view-transition";
 import { CapVideoPlayer } from "../_components/CapVideoPlayer";
 import { VideoDownloadMenu } from "../_components/VideoDownloadMenu";
 import { captureVideoFrameDataUrl } from "../_components/video-frame-thumbnail";
@@ -1015,19 +1014,33 @@ export function EditVideoClient({
 		handleDelete();
 	}, [commitState, handleDelete, playhead, timelineDisplaySplitPoints]);
 
+	// The editor opens in a new tab from the portal. On exit, return there — close the tab, or (if it
+	// wasn't script-opened) bounce through /dashboard, which the proxy redirects to the portal Tapes
+	// board. Never route the user to Cap's own /s/ share page.
+	const returnToPortal = useCallback(() => {
+		try {
+			window.close();
+		} catch {
+			/* ignore */
+		}
+		window.setTimeout(() => {
+			window.location.href = "/dashboard";
+		}, 200);
+	}, []);
+
 	const handleDone = useCallback(async () => {
 		if (isSaving) return;
 		const draftStorage = getTimelineDraftStorage();
 		if (!hasTimelineChanges) {
 			if (draftStorage) clearTimelineDraft(draftStorage, draftStorageKey);
-			router.push(`/s/${video.id}`);
+			returnToPortal();
 			return;
 		}
 		setIsSaving(true);
 		try {
 			await saveVideoEdits(video.id, editSpec);
 			if (draftStorage) clearTimelineDraft(draftStorage, draftStorageKey);
-			router.push(`/s/${video.id}`);
+			returnToPortal();
 			router.refresh();
 		} catch (error) {
 			toast.error(
@@ -1042,13 +1055,8 @@ export function EditVideoClient({
 		isSaving,
 		router,
 		video.id,
+		returnToPortal,
 	]);
-
-	const handleCancel = useCallback(() => {
-		const draftStorage = getTimelineDraftStorage();
-		if (draftStorage) clearTimelineDraft(draftStorage, draftStorageKey);
-		navigateWithTransition("edit-exit", () => router.push(`/s/${video.id}`));
-	}, [draftStorageKey, router, video.id]);
 
 	const resetTimeline = useCallback(() => {
 		const draftStorage = getTimelineDraftStorage();
@@ -1075,7 +1083,7 @@ export function EditVideoClient({
 			await restoreVideoToOriginal(video.id);
 			resetTimeline();
 			setShowRestoreConfirm(false);
-			router.push(`/s/${video.id}`);
+			returnToPortal();
 			router.refresh();
 		} catch (error) {
 			toast.error(
@@ -1090,6 +1098,7 @@ export function EditVideoClient({
 		resetTimeline,
 		router,
 		video.id,
+		returnToPortal,
 	]);
 
 	const seekTo = useCallback(
@@ -1573,13 +1582,6 @@ export function EditVideoClient({
 			<header className="sticky top-0 z-30 border-b border-gray-4 bg-gray-2 backdrop-blur">
 				<div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between gap-2 px-3 sm:h-16 sm:px-5">
 					<div className="flex items-center gap-1.5">
-						<button
-							type="button"
-							onClick={handleCancel}
-							className="inline-flex h-9 items-center rounded-full bg-gray-3 px-4 text-[14px] font-medium text-gray-12 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-1px_0_rgba(0,0,0,0.02)] ring-1 ring-gray-5 transition hover:bg-gray-4 active:bg-gray-5"
-						>
-							Cancel
-						</button>
 						<button
 							type="button"
 							aria-label="Restore original"
