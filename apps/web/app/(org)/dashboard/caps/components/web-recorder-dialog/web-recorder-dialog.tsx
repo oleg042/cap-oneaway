@@ -389,7 +389,7 @@ export const WebRecorderDialog = ({
 					// hardcodes its centering transform in `style`, and props.style would replace it.)
 					className={`${
 						embed && showPreviewColumn
-							? "w-[94vw] !max-w-[1080px]"
+							? "w-[96vw] !max-w-[1600px]"
 							: showPreviewColumn
 								? "w-[760px] !max-w-[760px]"
 								: "w-[300px]"
