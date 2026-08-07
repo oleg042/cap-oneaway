@@ -265,7 +265,12 @@ jobs:
         run: node scripts/check-tauri-plugin-versions.js
 
   rust-cache:
+    # Best-effort Rust build-cache warmer — nothing `needs:` it. It builds the cap-muxer sidecar
+    # then `cargo build`s to populate the shared cache; the sidecar build is environment-sensitive
+    # and not worth blocking CI on. continue-on-error keeps the workflow green (no failure emails)
+    # while still warming the cache whenever it succeeds.
     name: Rust cache
+    continue-on-error: true
     needs: changes
     if: needs.changes.outputs.branch == 'main'
     strategy:
