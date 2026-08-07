@@ -297,12 +297,18 @@ async function extractAudioWindow(
 async function transcribeBufferToRawWords(
 	audioBuffer: Buffer,
 ): Promise<{ words: RawWord[]; language: string | null }> {
+	const t0 = Date.now();
 	const singlePass = async () => {
+		const s = Date.now();
 		const r = await runWorkersAiWithRetry(audioBuffer);
-		return {
+		const out = {
 			words: cloudflareResultToRawWords(r),
 			language: r.transcription_info?.language ?? null,
 		};
+		console.log(
+			`[cf-transcribe] path=single bytes=${audioBuffer.length} asr=${Date.now() - s}ms total=${Date.now() - t0}ms words=${out.words.length}`,
+		);
+		return out;
 	};
 
 	// Fast chunked path. ANY failure inside it — ffmpeg unavailable, temp write, duration probe, a chunk
@@ -313,7 +319,9 @@ async function transcribeBufferToRawWords(
 	const srcPath = join(tmpdir(), `cf-src-${randomUUID()}.mp3`);
 	try {
 		await fs.writeFile(srcPath, audioBuffer);
+		const tProbe = Date.now();
 		const durationSec = await probeDurationSec(srcPath);
+		const probeMs = Date.now() - tProbe;
 
 		// Only worth chunking a clip long enough to benefit; short/unknown-duration falls through to one pass.
 		if (durationSec >= CHUNK_MIN_DURATION_SEC) {
@@ -323,6 +331,8 @@ async function transcribeBufferToRawWords(
 				i: number;
 				words: RawWord[];
 				language: string | null;
+				ffMs: number;
+				asrMs: number;
 			}[] = [];
 
 			// Bounded concurrency: run windows in batches of CHUNK_CONCURRENCY.
@@ -332,14 +342,18 @@ async function transcribeBufferToRawWords(
 					batch.map(async (i) => {
 						const winStart = Math.max(0, i * CHUNK_SEC - OVERLAP_SEC);
 						const winEnd = (i + 1) * CHUNK_SEC + OVERLAP_SEC;
+						const tff = Date.now();
 						const chunkPath = await extractAudioWindow(
 							srcPath,
 							winStart,
 							winEnd - winStart,
 						);
+						const ffMs = Date.now() - tff;
 						try {
 							const buf = await fs.readFile(chunkPath);
+							const tasr = Date.now();
 							const r = await runWorkersAiWithRetry(buf);
+							const asrMs = Date.now() - tasr;
 							const offsetMs = winStart * 1000;
 							const ownStartMs = i * CHUNK_SEC * 1000;
 							const ownEndMs = (i + 1) * CHUNK_SEC * 1000;
@@ -355,6 +369,8 @@ async function transcribeBufferToRawWords(
 								i,
 								words,
 								language: r.transcription_info?.language ?? null,
+								ffMs,
+								asrMs,
 							};
 						} finally {
 							await fs.unlink(chunkPath).catch(() => {});
@@ -371,6 +387,12 @@ async function transcribeBufferToRawWords(
 			// Only accept a NON-empty stitched result; an empty one is suspicious (a real recording has
 			// speech), so leave `chunked` null and fall through to single-pass rather than save an empty one.
 			if (words.length > 0) {
+				const ffSum = perChunk.reduce((s, c) => s + c.ffMs, 0);
+				const asrMax = Math.max(...perChunk.map((c) => c.asrMs));
+				const asrSum = perChunk.reduce((s, c) => s + c.asrMs, 0);
+				console.log(
+					`[cf-transcribe] path=chunked chunks=${nChunks} probe=${probeMs}ms ffmpegSum=${ffSum}ms asrMax=${asrMax}ms asrSum=${asrSum}ms total=${Date.now() - t0}ms words=${words.length}`,
+				);
 				chunked = {
 					words,
 					language: perChunk.find((c) => c.language)?.language ?? null,
