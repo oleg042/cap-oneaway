@@ -18,10 +18,9 @@ export function EmbedRecorder() {
 		el.classList.add("dark");
 		el.style.background = "#0a0a0a";
 		document.body.style.background = "#0a0a0a";
-		// Clear the embed flag now that the recorder has rendered, so navigating Cap's other dashboard
-		// pages later doesn't strip their nav (bare mode is only for this recorder iframe).
-		// biome-ignore lint/suspicious/noDocumentCookie: clearing a single short-lived flag cookie
-		document.cookie = "tape_embed=; Max-Age=0; Path=/; SameSite=None; Secure";
+		// NB: we deliberately KEEP the tape_embed cookie so the recorder stays bare across reloads. Cap's
+		// other dashboard routes are locked down at the proxy (redirected to the portal), so there's nothing
+		// for bare mode to "leak" onto — the record page is the only reachable /dashboard page.
 		return () => {
 			if (!had) el.classList.remove("dark");
 			el.style.background = "";

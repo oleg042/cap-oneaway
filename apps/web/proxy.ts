@@ -55,6 +55,21 @@ export async function proxy(request: NextRequest) {
 		return response;
 	}
 
+	// Tape is the portal's invisible engine — a user only ever touches the bare recorder (above) and the
+	// editor/share pages under /s/. Everything else beneath /dashboard is Cap's own un-branded app (My Caps,
+	// Analytics, Import Media, Organization Settings, Cap Pro, "Cap Software Inc." …) and must never be
+	// user-facing, so bounce any such route back to the portal. Gated on PORTAL_URL so a misconfig degrades
+	// to Cap's own UI rather than an unresolvable redirect.
+	if (
+		path.startsWith("/dashboard") &&
+		!path.startsWith("/dashboard/caps/record")
+	) {
+		const portal = process.env.PORTAL_URL?.replace(/\/+$/, "");
+		if (portal) {
+			return NextResponse.redirect(`${portal}/tasks?board=tapes`);
+		}
+	}
+
 	const shareIframeRedirectUrl = getShareIframeRedirectUrl({
 		method: request.method,
 		requestUrl: request.url,
