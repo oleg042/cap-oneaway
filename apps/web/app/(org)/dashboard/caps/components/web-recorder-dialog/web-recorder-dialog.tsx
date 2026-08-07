@@ -24,6 +24,7 @@ import { HowItWorksPanel } from "./HowItWorksPanel";
 import { InProgressRecordingBar } from "./InProgressRecordingBar";
 import { MicrophoneSelector } from "./MicrophoneSelector";
 import { RecordingButton } from "./RecordingButton";
+import { RecordingCapToggle } from "./RecordingCapToggle";
 import {
 	type RecordingMode,
 	RecordingModeSelector,
@@ -72,6 +73,9 @@ export const WebRecorderDialog = ({
 	}, [embed]);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+	// Off by default → the 20-min auto-stop guardrail is active. Deliberately re-defaults off each time the
+	// dialog opens (reset in handleOpenChange) so lifting the cap is always a conscious per-recording choice.
+	const [overrideDefaultCap, setOverrideDefaultCap] = useState(false);
 	const [recordingMode, setRecordingMode] =
 		useState<RecordingMode>("fullscreen");
 	const [cameraSelectOpen, setCameraSelectOpen] = useState(false);
@@ -213,6 +217,7 @@ export const WebRecorderDialog = ({
 		selectedCameraId,
 		bubblePosition,
 		isProUser: user.isPro,
+		overrideDefaultCap,
 		onRecordingSurfaceDetected: (mode) => {
 			setRecordingMode(mode);
 		},
@@ -266,6 +271,7 @@ export const WebRecorderDialog = ({
 			setRecordingMode("fullscreen");
 			setSettingsOpen(false);
 			setHowItWorksOpen(false);
+			setOverrideDefaultCap(false);
 		}
 		setOpen(next);
 	};
@@ -482,6 +488,11 @@ export const WebRecorderDialog = ({
 												onToggle={handleSystemAudioChange}
 											/>
 										)}
+										<RecordingCapToggle
+											overridden={overrideDefaultCap}
+											disabled={isBusy || isRecording}
+											onToggle={setOverrideDefaultCap}
+										/>
 										<RecordingButton
 											isRecording={isRecording}
 											disabled={!canStartRecording || (isBusy && !isRecording)}

@@ -63,12 +63,13 @@ import { useRecordingTimer } from "./useRecordingTimer";
 import { useStreamManagement } from "./useStreamManagement";
 import { useSurfaceDetection } from "./useSurfaceDetection";
 import {
+	computeEffectiveMaxRecordingMs,
 	type DetectedDisplayRecordingMode,
 	DISPLAY_MEDIA_VIDEO_CONSTRAINTS,
 	DISPLAY_MODE_PREFERENCES,
 	type DisplaySurfacePreference,
 	type ExtendedDisplayMediaStreamOptions,
-	FREE_PLAN_MAX_RECORDING_MS,
+	HARD_MAX_RECORDING_MS,
 	RECORDING_MODE_TO_DISPLAY_SURFACE,
 } from "./web-recorder-constants";
 
@@ -83,6 +84,8 @@ interface UseWebRecorderOptions {
 	// the WebCodecs breakout box so it survives the recorder tab being hidden.
 	bubblePosition?: BubblePosition;
 	isProUser: boolean;
+	// Launch-time override of the default 20-min auto-stop cap → record up to the 45-min hard max.
+	overrideDefaultCap?: boolean;
 	onPhaseChange?: (phase: RecorderPhase) => void;
 	onRecordingSurfaceDetected?: (mode: RecordingMode) => void;
 	onRecordingStart?: () => void;
@@ -210,6 +213,7 @@ export const useWebRecorder = ({
 	selectedCameraId,
 	bubblePosition,
 	isProUser,
+	overrideDefaultCap,
 	onPhaseChange,
 	onRecordingSurfaceDetected,
 	onRecordingStart,
@@ -335,7 +339,7 @@ export const useWebRecorder = ({
 	const instantChunkModeRef = useRef<InstantChunkingMode | null>(null);
 	const chunkStartGuardTimeoutRef = useRef<number | null>(null);
 	const lastInstantChunkAtRef = useRef<number | null>(null);
-	const freePlanAutoStopTriggeredRef = useRef(false);
+	const maxDurationStopTriggeredRef = useRef(false);
 	const shareUrlOpenedRef = useRef(false);
 	const errorDownloadUrlRef = useRef<string | null>(null);
 	const stopInFlightRef = useRef(false);
@@ -640,6 +644,13 @@ export const useWebRecorder = ({
 	);
 
 	const isFreePlan = !isProUser;
+
+	// Effective auto-stop ceiling (ms): 20 min by default, up to the 45-min hard cap when overridden. See
+	// computeEffectiveMaxRecordingMs for how the free-plan/override/hard-cap bounds combine.
+	const effectiveMaxRecordingMs = computeEffectiveMaxRecordingMs({
+		isFreePlan,
+		overrideDefaultCap,
+	});
 
 	const stopInstantChunkInterval = useCallback(() => {
 		if (!dataRequestIntervalRef.current) return;
@@ -1685,31 +1696,34 @@ export const useWebRecorder = ({
 		stopRecordingRef.current = stopRecording;
 	}, [stopRecording]);
 
+	// Always-on max-duration guard. Auto-stops at the effective ceiling (20 min by default, up to the 45-min
+	// hard cap when overridden) and keeps whatever was captured, so a recording nobody remembers to stop
+	// can't run forever. Fires once per recording (the ref resets when we leave the recording/paused phase).
 	useEffect(() => {
-		if (!isFreePlan) {
-			freePlanAutoStopTriggeredRef.current = false;
-			return;
-		}
-
 		const isRecordingPhase = phase === "recording" || phase === "paused";
 		if (!isRecordingPhase) {
-			freePlanAutoStopTriggeredRef.current = false;
+			maxDurationStopTriggeredRef.current = false;
 			return;
 		}
 
 		if (
-			durationMs >= FREE_PLAN_MAX_RECORDING_MS &&
-			!freePlanAutoStopTriggeredRef.current
+			durationMs >= effectiveMaxRecordingMs &&
+			!maxDurationStopTriggeredRef.current
 		) {
-			freePlanAutoStopTriggeredRef.current = true;
+			maxDurationStopTriggeredRef.current = true;
+			const minutes = Math.round(effectiveMaxRecordingMs / 60_000);
+			const hardMinutes = Math.round(HARD_MAX_RECORDING_MS / 60_000);
+			const atHardCap = effectiveMaxRecordingMs >= HARD_MAX_RECORDING_MS;
 			toast.info(
-				"Free plan recordings are limited to 5 minutes. Recording stopped automatically.",
+				atHardCap
+					? `Recording reached the ${minutes}-minute maximum and stopped automatically.`
+					: `Recording auto-stopped at the ${minutes}-minute limit. Turn on "Record past ${minutes} min" before you start to record up to ${hardMinutes} min.`,
 			);
 			stopRecording().catch((error) => {
-				console.error("Failed to stop recording at free plan limit", error);
+				console.error("Failed to stop recording at max duration", error);
 			});
 		}
-	}, [durationMs, isFreePlan, phase, stopRecording]);
+	}, [durationMs, effectiveMaxRecordingMs, phase, stopRecording]);
 
 	const restartRecording = useCallback(async () => {
 		if (isRestarting) return;
