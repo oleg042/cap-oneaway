@@ -12,9 +12,11 @@ const IDLE_SCALE = 0.16; // bars never fully collapse, so an idle mic still read
 export function MicLevelMeter({
 	deviceId,
 	className,
+	color = "var(--orange-9)",
 }: {
 	deviceId: string;
 	className?: string;
+	color?: string;
 }) {
 	const barRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
@@ -104,7 +106,7 @@ export function MicLevelMeter({
 						width: "2.5px",
 						height: "14px",
 						borderRadius: "2px",
-						background: "var(--orange-9)",
+						background: color,
 						transform: `scaleY(${IDLE_SCALE})`,
 						transformOrigin: "center",
 						willChange: "transform",

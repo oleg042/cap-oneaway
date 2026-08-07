@@ -581,6 +581,7 @@ export const WebRecorderDialog = ({
 					phase={phase}
 					durationMs={recordingTimerDisplayMs}
 					hasAudioTrack={hasAudioTrack}
+					micDeviceId={selectedMicId}
 					chunkUploads={chunkUploads}
 					errorDownload={errorDownload}
 					onStop={handleStopClick}

@@ -28,6 +28,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { MicLevelMeter } from "./MicLevelMeter";
 
 const phaseMessages: Partial<Record<RecorderPhase, string>> = {
 	recording: "Recording",
@@ -54,6 +55,7 @@ interface InProgressRecordingBarProps {
 	phase: RecorderPhase;
 	durationMs: number;
 	hasAudioTrack: boolean;
+	micDeviceId?: string | null; // selected mic → live level meter while recording
 	chunkUploads: ChunkUploadState[];
 	onStop: () => void | Promise<void>;
 	onPause?: () => void | Promise<void>;
@@ -69,6 +71,7 @@ export const InProgressRecordingBar = ({
 	phase,
 	durationMs,
 	hasAudioTrack,
+	micDeviceId,
 	chunkUploads,
 	onStop,
 	onPause,
@@ -324,20 +327,21 @@ export const InProgressRecordingBar = ({
 
 						<div className="flex gap-3 items-center" data-no-drag>
 							<InlineChunkProgress chunkUploads={chunkUploads} />
-							<div className="flex relative justify-center items-center w-8 h-8">
+							<div
+								className="flex justify-center items-center gap-1.5 h-8 px-1"
+								data-no-drag
+							>
 								{hasAudioTrack ? (
 									<>
 										<Mic className="size-5 text-gray-12" />
-										<div className="absolute bottom-1 left-1 right-1 h-0.5 bg-gray-10 overflow-hidden rounded-full">
-											<div
-												className="absolute inset-0 bg-blue-9 transition-transform duration-200"
-												style={{
-													transform: hasAudioTrack
-														? "translateX(0%)"
-														: "translateX(-100%)",
-												}}
+										{/* Live input meter — pulses with your ACTUAL voice so you can see audio is being
+										    captured. Only while actively recording; paused shows just the mic icon. */}
+										{phase === "recording" && (
+											<MicLevelMeter
+												deviceId={micDeviceId ?? ""}
+												color="var(--blue-9)"
 											/>
-										</div>
+										)}
 									</>
 								) : (
 									<MicOff className="text-gray-7 size-5" />
