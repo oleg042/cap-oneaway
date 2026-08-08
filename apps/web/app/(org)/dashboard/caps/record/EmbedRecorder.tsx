@@ -44,19 +44,35 @@ export function EmbedRecorder() {
 			<WebRecorderDialog
 				embed
 				onRecorded={() => {
-					// The portal opened this recorder in a new tab and reconciles the finished tape server-side
-					// (it polls Cap), so there's nothing to hand back here — just close this tab so the user
-					// lands back on their content/portal tab. No cross-tab postMessage → no share URL to leak.
+					// The portal opened this recorder in a NEW TAB and reconciles the finished tape server-side
+					// (it polls Cap), so there's nothing to hand back here. Return focus to the opener (the
+					// portal Tapes board tab) BEFORE self-closing, so the browser lands THERE rather than on a
+					// random adjacent tab. focus() and closed are both cross-origin-safe on window.opener.
 					const opener = (window.opener as Window | null) ?? null;
-					if (opener && opener !== window) {
-						setTimeout(() => {
-							try {
-								window.close();
-							} catch {
-								/* ignore */
-							}
-						}, 600);
+					let openerAlive = false;
+					try {
+						openerAlive = !!opener && opener !== window && !opener.closed;
+					} catch {
+						// `closed` should be readable cross-origin, but never let a throw abort the close.
+						openerAlive = !!opener && opener !== window;
 					}
+					if (!openerAlive || !opener) {
+						// Tapes board tab was closed → nothing to return to. Leave this tab on the completed
+						// state (Open Share Link); the finished tape still appears via the server-side reconcile.
+						return;
+					}
+					setTimeout(() => {
+						try {
+							opener.focus(); // bring the Tapes board tab forward
+						} catch {
+							/* cross-origin focus is permitted; guard defensively */
+						}
+						try {
+							window.close();
+						} catch {
+							/* ignore */
+						}
+					}, 600);
 				}}
 			/>
 		</div>
