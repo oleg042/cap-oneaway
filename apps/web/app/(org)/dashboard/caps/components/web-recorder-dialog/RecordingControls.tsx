@@ -112,7 +112,9 @@ export function RecordingControls({
 					{hasAudioTrack ? "Microphone" : "No microphone"}
 				</span>
 				{hasAudioTrack && !isPaused && (
-					<MicLevelMeter deviceId={micDeviceId ?? ""} color="var(--cobalt)" />
+					// Default brand orange (var(--orange-9)) — matches the setup mic meter; a cobalt override
+					// here made the meter flip orange→blue the instant recording started.
+					<MicLevelMeter deviceId={micDeviceId ?? ""} />
 				)}
 			</div>
 
