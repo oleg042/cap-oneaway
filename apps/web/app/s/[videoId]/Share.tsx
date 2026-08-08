@@ -647,9 +647,31 @@ export const Share = ({
 					)}
 				</div>
 			</div>
+			<TapeSourceFooter />
 		</CaptionProvider>
 	);
 };
+
+// AGPL-3.0 §13: this page is served by a MODIFIED fork of Cap (AGPL-3.0), so it must offer the Corresponding
+// Source to anyone interacting with it over the network. Point CAP_SOURCE_URL at YOUR public source mirror of
+// the fork for full compliance — it defaults to upstream Cap (the base the modifications sit on).
+const CAP_SOURCE_URL = "https://github.com/CapSoftware/Cap";
+function TapeSourceFooter() {
+	return (
+		<footer className="w-full py-4 text-center text-[11px] text-gray-9">
+			Powered by a modified fork of{" "}
+			<a
+				href={CAP_SOURCE_URL}
+				target="_blank"
+				rel="noopener noreferrer"
+				className="underline hover:text-gray-11"
+			>
+				Cap
+			</a>{" "}
+			(AGPL-3.0) · source available.
+		</footer>
+	);
+}
 
 function ScreenshotImage({ src, alt }: { src?: string | null; alt: string }) {
 	if (!src) {
