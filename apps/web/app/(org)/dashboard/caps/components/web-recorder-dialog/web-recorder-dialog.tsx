@@ -22,6 +22,7 @@ import { type BubblePosition, isCompositorSupported } from "./cameraCompositor";
 import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
 import { LiveCaptureView, RecordingControls } from "./RecordingControls";
+import { useConcurrentRecordingWarning } from "./useConcurrentRecordingWarning";
 import { MicrophoneSelector } from "./MicrophoneSelector";
 import { RecordingButton } from "./RecordingButton";
 import { RecordingCapToggle } from "./RecordingCapToggle";
@@ -323,6 +324,10 @@ export const WebRecorderDialog = ({
 	// rather than flashing the setup panel; the controls read `busy` (isRestarting) and stay disabled until
 	// the fresh capture is live.
 	const inRecordingUI = isRecording || isRestarting;
+	// Cross-tab guard — concurrent takes are safe (separate Cap video/R2/spool) but usually a mis-click, so
+	// warn (dismissibly) when another tab is already recording.
+	const otherTabRecording = useConcurrentRecordingWarning(isRecording);
+	const [concurrentWarnDismissed, setConcurrentWarnDismissed] = useState(false);
 	// Native PiP self-view: only for camera-only mode, or the non-Chromium fallback for screen modes so a
 	// screen recording still gets a camera. Never shown when we're compositing.
 	const showCameraPreview =
@@ -420,7 +425,21 @@ export const WebRecorderDialog = ({
 									isBusy={isBusy}
 									onClose={handleClose}
 								/>
-								{/* Two columns for screen captures: a control menu on the left, the big camera preview
+								{otherTabRecording && !concurrentWarnDismissed && (
+										<div className="flex items-start gap-2 rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
+											<span className="flex-1">
+												A recording is already running in another tab. You can still record here — they won't interfere.
+											</span>
+											<button
+												type="button"
+												onClick={() => setConcurrentWarnDismissed(true)}
+												className="shrink-0 font-medium text-amber-11 transition-colors hover:text-amber-12"
+											>
+												Dismiss
+											</button>
+										</div>
+									)}
+									{/* Two columns for screen captures: a control menu on the left, the big camera preview
 								    on the right. `display: contents` keeps camera-only mode a single column. */}
 								<div
 									className={

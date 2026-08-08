@@ -161,13 +161,21 @@ export async function transcribeVideoWorkflow(
 			};
 		}
 
+		const _transcribeT0 = Date.now();
 		const transcription = await transcribeWithAssemblyAI(
 			audioUrl,
 			videoData.aiGenerationLanguage,
 			videoDurationMs,
 		);
+		const transcribeMs = Date.now() - _transcribeT0;
 
-		await saveTranscription(videoId, userId, videoData.video, transcription);
+		await saveTranscription(
+			videoId,
+			userId,
+			videoData.video,
+			transcription,
+			transcribeMs,
+		);
 	} catch (error) {
 		await markError(videoId);
 		await cleanupTempAudio(videoId, userId, videoData.video);
@@ -865,6 +873,10 @@ async function saveTranscription(
 	userId: string,
 	video: typeof videos.$inferSelect,
 	transcription: TranscriptionArtifacts,
+	// Wall-clock of the transcription step, stashed into videos.metadata.oaPipeline so the OneAway portal can
+	// surface a per-step "transcribe" timing. Measured in the orchestrator; a workflow resume would replay
+	// the cached step at ~0ms, so the write below guards on >200ms.
+	transcribeMs?: number,
 ): Promise<void> {
 	"use step";
 
@@ -906,7 +918,15 @@ async function saveTranscription(
 
 	await db()
 		.update(videos)
-		.set({ transcriptionStatus: "COMPLETE" })
+		.set({
+			transcriptionStatus: "COMPLETE",
+			// Deep-merge the transcribe timing into metadata.oaPipeline (never clobbers aiTitle/summary/etc.).
+			...(transcribeMs != null && Number.isFinite(transcribeMs) && transcribeMs > 200
+				? {
+						metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('transcribeMs', ${Math.round(transcribeMs)})))`,
+					}
+				: {}),
+		})
 		.where(eq(videos.id, videoId as Video.VideoId));
 
 	// The canonical transcript supersedes the provisional live transcript, so
