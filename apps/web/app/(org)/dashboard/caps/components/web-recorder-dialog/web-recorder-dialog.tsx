@@ -319,6 +319,10 @@ export const WebRecorderDialog = ({
 	// greyed-out camera/mic pickers don't reappear after Stop — the finalize status below is the only cue.
 	const isFinalizing =
 		phase === "creating" || phase === "converting" || phase === "uploading";
+	// While a Restart is mid-flight (stop → wipe R2/pending → re-acquire) keep showing the recording UI
+	// rather than flashing the setup panel; the controls read `busy` (isRestarting) and stay disabled until
+	// the fresh capture is live.
+	const inRecordingUI = isRecording || isRestarting;
 	// Native PiP self-view: only for camera-only mode, or the non-Chromium fallback for screen modes so a
 	// screen recording still gets a camera. Never shown when we're compositing.
 	const showCameraPreview =
@@ -430,7 +434,7 @@ export const WebRecorderDialog = ({
 												: "contents"
 										}
 									>
-										{isRecording ? (
+										{inRecordingUI ? (
 										<RecordingControls
 											durationMs={recordingTimerDisplayMs}
 											isPaused={isPaused}
@@ -441,6 +445,7 @@ export const WebRecorderDialog = ({
 											onStop={handleStopClick}
 											onPause={pauseRecording}
 											onResume={resumeRecording}
+											onRestart={restartRecording}
 											onCancel={cancelRecording}
 										/>
 										) : isFinalizing ? null : (
@@ -513,7 +518,7 @@ export const WebRecorderDialog = ({
 									</div>
 									{showPreviewColumn && (
 										<div className="flex min-w-0 flex-1 items-start pt-[2px]">
-											{isRecording ? (
+											{inRecordingUI ? (
 										<LiveCaptureView getStream={getCaptureStream} />
 										) : (
 										<CameraPreviewArea
@@ -566,7 +571,7 @@ export const WebRecorderDialog = ({
 											{errorDownload && (
 												<a href={errorDownload.url} download={errorDownload.fileName} className="mt-2 inline-block font-medium text-blue-11 underline underline-offset-2 hover:text-blue-12">Download recording</a>
 											)}
-											<Button variant="blue" size="sm" className="mt-3 w-full" onClick={restartRecording} disabled={isRestarting}>Try again</Button>
+											<Button variant="blue" size="sm" className="mt-3 w-full" onClick={resetState} disabled={isRestarting}>Try again</Button>
 										</div>
 										)}
 										{phase === "idle" && recoveredDownloads.length > 0 && (

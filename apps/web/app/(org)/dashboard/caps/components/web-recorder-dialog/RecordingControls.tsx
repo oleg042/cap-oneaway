@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@cap/ui";
-import { Mic, MicOff, Pause, Play, Square } from "lucide-react";
+import { Mic, MicOff, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { MicLevelMeter } from "./MicLevelMeter";
 
@@ -12,7 +12,8 @@ const fmtDuration = (ms: number): string => {
 
 // Big live preview of the EXACT composited capture (screen + camera bubble) being recorded — fills the same
 // right column the camera preview occupies during setup. Read-only: srcObject only, muted, never the tracks
-// stopped (they belong to the active recording).
+// stopped (they belong to the active recording). Polls getStream so a RESTART (which swaps in a brand-new
+// mixedStream) re-attaches without a remount — otherwise the <video> would freeze on the old, stopped frame.
 export function LiveCaptureView({
 	getStream,
 }: {
@@ -23,22 +24,26 @@ export function LiveCaptureView({
 		const v = videoRef.current;
 		if (!v) return;
 		let cancelled = false;
-		const attach = () => {
+		let attached: MediaStream | null = null;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const tick = () => {
 			if (cancelled) return;
 			const stream = getStream();
-			if (stream) {
+			if (stream && stream !== attached) {
+				attached = stream;
 				v.srcObject = stream;
 				void v.play().catch(() => {});
-			} else {
-				setTimeout(attach, 200); // composited stream not live yet — retry briefly
 			}
+			// Re-check on a short interval: the stream isn't live on the first tick, and a restart replaces it.
+			timer = setTimeout(tick, 250);
 		};
-		attach();
+		tick();
 		return () => {
 			cancelled = true;
+			if (timer) clearTimeout(timer);
 			if (v) v.srcObject = null;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: attach once on mount
+		// biome-ignore lint/correctness/useExhaustiveDependencies: getStream reads live refs; poll handles swaps
 	}, []);
 	return (
 		<div className="relative w-full overflow-hidden rounded-xl border border-gray-4 bg-black">
@@ -67,12 +72,13 @@ interface RecordingControlsProps {
 	onStop: () => void;
 	onPause?: () => void;
 	onResume?: () => void;
+	onRestart?: () => void;
 	onCancel: () => void;
 }
 
 // The left-panel control set WHILE recording — the launcher panel becomes this. Timer + status, a live mic
-// level, Stop & save / Pause·Resume, and a confirm-gated Cancel & discard (which wipes the pending video +
-// any R2 chunks upstream).
+// level, Stop & save / Pause·Resume, a one-click Restart (scrap this take → wipes the pending video + any R2
+// chunks, then re-records), and a confirm-gated Cancel & discard (same wipe, but back to setup).
 export function RecordingControls({
 	durationMs,
 	isPaused,
@@ -83,9 +89,13 @@ export function RecordingControls({
 	onStop,
 	onPause,
 	onResume,
+	onRestart,
 	onCancel,
 }: RecordingControlsProps) {
 	const [confirmCancel, setConfirmCancel] = useState(false);
+	// Shared look for the two secondary actions so they clearly read as buttons (not caption text).
+	const secondaryBtn =
+		"flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-5 py-[0.5rem] text-[0.8rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 	return (
 		<div className="flex flex-col gap-[0.75rem] text-gray-12">
 			{/* status + timer */}
@@ -134,13 +144,13 @@ export function RecordingControls({
 					onClick={isPaused ? onResume : onPause}
 					disabled={busy || !canPause}
 					aria-label={isPaused ? "Resume recording" : "Pause recording"}
-					className="flex size-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-gray-3 text-gray-11 transition-colors hover:bg-gray-3/50 disabled:cursor-not-allowed disabled:opacity-50"
+					className="flex size-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-gray-5 text-gray-11 transition-colors hover:bg-gray-3 disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					{isPaused ? <Play className="size-4" /> : <Pause className="size-4" />}
 				</button>
 			</div>
 
-			{/* cancel & discard — confirm-gated (destructive: deletes the recording + any uploaded chunks) */}
+			{/* secondary actions: Restart (one-click, scrap & re-record) + Cancel & discard (confirm-gated). */}
 			{confirmCancel ? (
 				<div className="rounded-lg border border-red-6 bg-[var(--red-3)] p-2.5 dark:bg-[var(--red-4)]">
 					<p className="text-[0.8rem] leading-snug text-red-12">
@@ -152,7 +162,7 @@ export function RecordingControls({
 							type="button"
 							onClick={() => setConfirmCancel(false)}
 							disabled={busy}
-							className="flex-grow rounded-lg border border-gray-4 py-1.5 text-[0.8rem] text-gray-12 transition-colors hover:bg-gray-3/50 disabled:opacity-50"
+							className="flex-grow rounded-lg border border-gray-5 py-1.5 text-[0.8rem] text-gray-12 transition-colors hover:bg-gray-3 disabled:opacity-50"
 						>
 							Keep recording
 						</button>
@@ -167,14 +177,27 @@ export function RecordingControls({
 					</div>
 				</div>
 			) : (
-				<button
-					type="button"
-					onClick={() => setConfirmCancel(true)}
-					disabled={busy}
-					className="text-[0.8rem] text-gray-11 transition-colors hover:text-red-11 disabled:opacity-50"
-				>
-					Cancel &amp; discard
-				</button>
+				<div className="flex gap-2">
+					{onRestart && (
+						<button
+							type="button"
+							onClick={onRestart}
+							disabled={busy}
+							title="Scrap this take and start over — deletes the recording and any uploaded chunks"
+							className={`${secondaryBtn} text-gray-12 hover:bg-gray-3`}
+						>
+							<RotateCcw className="size-3.5" /> Restart
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={() => setConfirmCancel(true)}
+						disabled={busy}
+						className={`${secondaryBtn} text-gray-11 hover:bg-gray-3 hover:text-red-11`}
+					>
+						Cancel &amp; discard
+					</button>
+				</div>
 			)}
 		</div>
 	);
