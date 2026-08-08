@@ -778,6 +778,33 @@ export const useWebRecorder = ({
 		};
 	}, []);
 
+	// Reap an abandoned take at its SOURCE (fixes "Didn't finish" orphans, not just sweeps them). The Cap
+	// video is created mid-recording for instant chunk-upload; if the tab is closed or navigated away WHILE
+	// actively recording, React's unmount cleanup won't fire, so that video lingers with no result.mp4 and
+	// the portal reconcile surfaces it as a "Didn't finish" orphan. A keepalive DELETE fires reliably during
+	// unload (a normal fetch is cancelled mid-flight), removing the pending video the moment the recording is
+	// abandoned. Gated to recording/paused ONLY: a finalize (creating/converting/uploading) may still
+	// complete server-side, and a completed take must never be deleted.
+	const phaseRef = useRef(phase);
+	phaseRef.current = phase;
+	useEffect(() => {
+		const reapAbandonedTake = () => {
+			const id = pendingInstantVideoIdRef.current;
+			const p = phaseRef.current;
+			if (!id || (p !== "recording" && p !== "paused")) return;
+			try {
+				void fetch(
+					`/api/video/delete?videoId=${encodeURIComponent(String(id))}`,
+					{ method: "DELETE", keepalive: true, credentials: "include" },
+				).catch(() => {});
+			} catch {
+				/* best-effort during unload */
+			}
+		};
+		window.addEventListener("pagehide", reapAbandonedTake);
+		return () => window.removeEventListener("pagehide", reapAbandonedTake);
+	}, []);
+
 	const handleRecorderDataAvailable = useCallback(
 		(event: BlobEvent) => {
 			onRecorderDataAvailable(event, (chunk: Blob, totalBytes: number) => {
