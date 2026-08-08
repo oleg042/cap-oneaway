@@ -916,14 +916,27 @@ async function saveTranscription(
 			.pipe(runWorkflowPromise);
 	}
 
+	// Per-step timings for the OneAway portal (deep-merged into metadata.oaPipeline; never clobbers
+	// aiTitle/summary/etc.). transcribeMs = this step's wall-clock (guarded >200ms so a cached workflow
+	// replay doesn't write ~0). endToEndMs = record-created → fully processed, the headline "how long until
+	// it's ready" number, computed here at COMPLETE (the last processing step) from the video's createdAt.
+	const oaStats: Record<string, number> = {};
+	if (transcribeMs != null && Number.isFinite(transcribeMs) && transcribeMs > 200) {
+		oaStats.transcribeMs = Math.round(transcribeMs);
+	}
+	if (video.createdAt) {
+		const e2e = Date.now() - new Date(video.createdAt).getTime();
+		if (Number.isFinite(e2e) && e2e > 0 && e2e < 24 * 60 * 60 * 1000) {
+			oaStats.endToEndMs = Math.round(e2e);
+		}
+	}
 	await db()
 		.update(videos)
 		.set({
 			transcriptionStatus: "COMPLETE",
-			// Deep-merge the transcribe timing into metadata.oaPipeline (never clobbers aiTitle/summary/etc.).
-			...(transcribeMs != null && Number.isFinite(transcribeMs) && transcribeMs > 200
+			...(Object.keys(oaStats).length > 0
 				? {
-						metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('transcribeMs', ${Math.round(transcribeMs)})))`,
+						metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', CAST(${JSON.stringify(oaStats)} AS JSON)))`,
 					}
 				: {}),
 		})
