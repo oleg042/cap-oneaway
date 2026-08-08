@@ -21,7 +21,7 @@ import { CameraSelector } from "./CameraSelector";
 import { type BubblePosition, isCompositorSupported } from "./cameraCompositor";
 import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
-import { InProgressRecordingBar } from "./InProgressRecordingBar";
+import { LiveCaptureView, RecordingControls } from "./RecordingControls";
 import { MicrophoneSelector } from "./MicrophoneSelector";
 import { RecordingButton } from "./RecordingButton";
 import { RecordingCapToggle } from "./RecordingCapToggle";
@@ -183,12 +183,12 @@ export const WebRecorderDialog = ({
 		phase,
 		durationMs,
 		hasAudioTrack,
-		chunkUploads,
 		errorDownload,
 		completedShareUrl,
 		recoveredDownloads,
 		isSettingUp,
 		isRecording,
+		isPaused,
 		isBusy,
 		isRestarting,
 		canStartRecording,
@@ -204,6 +204,7 @@ export const WebRecorderDialog = ({
 		stopRecording,
 		openCompletedShareUrl,
 		restartRecording,
+		cancelRecording,
 		resetState,
 		dismissRecoveredDownload,
 	} = useWebRecorder({
@@ -298,7 +299,6 @@ export const WebRecorderDialog = ({
 		setHowItWorksOpen(true);
 	};
 
-	const showInProgressBar = isRecording || isBusy || phase === "error";
 	const canComposite = isCompositorSupported();
 	const cameraOn = !!selectedCameraId;
 	const canEnableCamera = availableCameras.length > 0;
@@ -308,8 +308,13 @@ export const WebRecorderDialog = ({
 		);
 	// Big camera preview column: shown for screen captures whenever the compositor is available (it also
 	// hosts the "turn camera on" CTA, so it appears even when the camera is off). Setup state only.
+	// Keep the two-column layout while RECORDING too — right column swaps the camera-setup preview for the
+	// live composited capture, left panel swaps device pickers for the recording controls. NOTE isBusyPhase
+	// INCLUDES recording/paused, so !isBusy alone would hide the column mid-record; gate on
+	// (isRecording || !isBusy) — show while recording/paused OR pre-record setup, hide only during the
+	// post-Stop finalize/upload (busy but not recording), where there's nothing live to preview.
 	const showPreviewColumn =
-		recordingMode !== "camera" && canComposite && !isRecording && !isBusy;
+		recordingMode !== "camera" && canComposite && (isRecording || !isBusy);
 	// Native PiP self-view: only for camera-only mode, or the non-Chromium fallback for screen modes so a
 	// screen recording still gets a camera. Never shown when we're compositing.
 	const showCameraPreview =
@@ -421,6 +426,21 @@ export const WebRecorderDialog = ({
 												: "contents"
 										}
 									>
+										{isRecording ? (
+										<RecordingControls
+											durationMs={recordingTimerDisplayMs}
+											isPaused={isPaused}
+											hasAudioTrack={hasAudioTrack}
+											micDeviceId={selectedMicId}
+											busy={isBusy || isRestarting}
+											canPause={Boolean(pauseRecording && resumeRecording)}
+											onStop={handleStopClick}
+											onPause={pauseRecording}
+											onResume={resumeRecording}
+											onCancel={cancelRecording}
+										/>
+										) : (
+										<>
 										{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
 										    getDisplayMedia dialog already asks screen vs window vs tab at Start, so pre-picking
 										    here was redundant. Recording is always screen (default 'fullscreen') + the optional
@@ -484,17 +504,23 @@ export const WebRecorderDialog = ({
 											onStart={handleStartClick}
 											onStop={handleStopClick}
 										/>
+										</>
+										)}
 									</div>
 									{showPreviewColumn && (
 										<div className="flex min-w-0 flex-1 items-start pt-[2px]">
-											<CameraPreviewArea
+											{isRecording ? (
+										<LiveCaptureView getStream={getCaptureStream} />
+										) : (
+										<CameraPreviewArea
 												cameraStream={previewCameraStream}
 												cameraOn={cameraOn}
 												canEnableCamera={canEnableCamera}
 												onToggleCamera={onToggleCamera}
 												position={bubblePosition}
 												onPositionChange={setBubblePosition}
-											/>
+										/>
+										)}
 										</div>
 									)}
 								</div>
@@ -519,7 +545,29 @@ export const WebRecorderDialog = ({
 										</Button>
 									</div>
 								)}
-								{phase === "idle" && recoveredDownloads.length > 0 && (
+								{(phase === "creating" ||
+									phase === "converting" ||
+									phase === "uploading") && (
+									<div className="flex items-center gap-2 rounded-md border border-blue-6 bg-blue-3/60 px-3 py-2.5 text-xs font-medium text-blue-12">
+										<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-blue-9 border-t-transparent" />
+										{phase === "uploading"
+											? "Uploading…"
+											: phase === "converting"
+												? "Converting…"
+												: "Finishing up…"}
+									</div>
+								)}
+								{phase === "error" && (
+										<div className="rounded-md border border-red-6 bg-red-3/70 px-3 py-3 text-xs text-red-12">
+											<div className="font-medium">Recording failed</div>
+											<div className="mt-1 leading-snug">{errorDownload ? "Your recording is safe — download it below, then try again." : "Please try again."}</div>
+											{errorDownload && (
+												<a href={errorDownload.url} download={errorDownload.fileName} className="mt-2 inline-block font-medium text-blue-11 underline underline-offset-2 hover:text-blue-12">Download recording</a>
+											)}
+											<Button variant="blue" size="sm" className="mt-3 w-full" onClick={restartRecording} disabled={isRestarting}>Try again</Button>
+										</div>
+										)}
+										{phase === "idle" && recoveredDownloads.length > 0 && (
 									<div className="rounded-md border border-blue-6 bg-blue-3/60 px-3 py-2">
 										<div className="text-xs font-medium text-blue-12">
 											Recovered recordings
@@ -575,22 +623,6 @@ export const WebRecorderDialog = ({
 					</AnimatePresence>
 				</DialogContent>
 			</Dialog>
-			{showInProgressBar && (
-				<InProgressRecordingBar
-					phase={phase}
-					durationMs={recordingTimerDisplayMs}
-					hasAudioTrack={hasAudioTrack}
-					micDeviceId={selectedMicId}
-					getPreviewStream={getCaptureStream}
-					chunkUploads={chunkUploads}
-					errorDownload={errorDownload}
-					onStop={handleStopClick}
-					onPause={pauseRecording}
-					onResume={resumeRecording}
-					onRestart={restartRecording}
-					isRestarting={isRestarting}
-				/>
-			)}
 			{showCameraPreview && (
 				<CameraPreviewWindow
 					ref={cameraPreviewRef}

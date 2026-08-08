@@ -1764,6 +1764,36 @@ export const useWebRecorder = ({
 		updatePhase,
 	]);
 
+	// Cancel & discard: stop the recorder, then run the SAME cleanup restart uses — it aborts the R2
+	// multipart upload (discarding any pushed chunks) and deletes the pending video — and land back at idle
+	// WITHOUT re-starting. Reuses isRestarting as the busy latch so Start/Stop/Cancel can't race it.
+	const cancelRecording = useCallback(async () => {
+		if (isRestarting) return;
+		if (phase !== "recording" && phase !== "paused") return;
+		setIsRestarting(true);
+		try {
+			try {
+				await stopRecordingInternalWrapper();
+			} catch (error) {
+				console.warn("Failed to stop recorder before cancel", error);
+			}
+			await cleanupRecordingState();
+			updatePhase("idle");
+		} catch (error) {
+			console.error("Failed to cancel recording", error);
+			await cleanupRecordingState();
+			updatePhase("idle");
+		} finally {
+			setIsRestarting(false);
+		}
+	}, [
+		cleanupRecordingState,
+		isRestarting,
+		phase,
+		stopRecordingInternalWrapper,
+		updatePhase,
+	]);
+
 	const canStartRecording =
 		Boolean(organisationId) &&
 		!isSettingUp &&
@@ -1799,6 +1829,7 @@ export const useWebRecorder = ({
 		stopRecording,
 		openCompletedShareUrl: () => openShareUrl(completedShareUrl),
 		restartRecording,
+		cancelRecording,
 		resetState,
 		dismissRecoveredDownload,
 		isRestarting,
@@ -1807,8 +1838,9 @@ export const useWebRecorder = ({
 		supportsDisplayRecording,
 		supportCheckCompleted,
 		screenCaptureWarning,
-		// Live in-tab preview of what's being captured — returns the raw display stream (set at record
-		// start), read-only. Muted preview only; never played back. Null until a capture is live.
-		getCaptureStream: () => displayStreamRef.current ?? null,
+		// Live preview of what's being captured — the SAME stream MediaRecorder writes: the composited
+		// screen + camera-bubble output when compositing (mixedStream), else the raw display. A muted <video>
+		// on this shows EXACTLY what's recorded, bubble included. Null until a capture is live.
+		getCaptureStream: () => mixedStreamRef.current ?? displayStreamRef.current ?? null,
 	};
 };
