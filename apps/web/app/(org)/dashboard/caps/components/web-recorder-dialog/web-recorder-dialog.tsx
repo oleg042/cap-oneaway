@@ -315,6 +315,10 @@ export const WebRecorderDialog = ({
 	// post-Stop finalize/upload (busy but not recording), where there's nothing live to preview.
 	const showPreviewColumn =
 		recordingMode !== "camera" && canComposite && (isRecording || !isBusy);
+	// Post-Stop finalize (convert/upload): not recording but busy. Suppress the setup device rows so the
+	// greyed-out camera/mic pickers don't reappear after Stop — the finalize status below is the only cue.
+	const isFinalizing =
+		phase === "creating" || phase === "converting" || phase === "uploading";
 	// Native PiP self-view: only for camera-only mode, or the non-Chromium fallback for screen modes so a
 	// screen recording still gets a camera. Never shown when we're compositing.
 	const showCameraPreview =
@@ -439,7 +443,7 @@ export const WebRecorderDialog = ({
 											onResume={resumeRecording}
 											onCancel={cancelRecording}
 										/>
-										) : (
+										) : isFinalizing ? null : (
 										<>
 										{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
 										    getDisplayMedia dialog already asks screen vs window vs tab at Start, so pre-picking
@@ -545,9 +549,7 @@ export const WebRecorderDialog = ({
 										</Button>
 									</div>
 								)}
-								{(phase === "creating" ||
-									phase === "converting" ||
-									phase === "uploading") && (
+								{isFinalizing && (
 									<div className="flex items-center gap-2 rounded-md border border-blue-6 bg-blue-3/60 px-3 py-2.5 text-xs font-medium text-blue-12">
 										<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-blue-9 border-t-transparent" />
 										{phase === "uploading"
