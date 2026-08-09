@@ -647,13 +647,13 @@ export const WebRecorderDialog = ({
 														</button>
 													</div>
 												) : (
-													<div className="flex aspect-video w-full items-center justify-center rounded-lg bg-gray-2">
+													<div className="flex aspect-video w-full items-center justify-center rounded-xl border border-gray-4 bg-gray-2">
 														<button
 															type="button"
 															onClick={() => setCapturePreviewOpen(true)}
-															className="inline-flex items-center gap-2 rounded-lg border border-gray-6 bg-gray-4 px-4 py-2.5 text-[0.85rem] font-semibold text-gray-12 shadow-sm transition-colors hover:border-gray-7 hover:bg-gray-5"
+															className="group inline-flex items-center gap-2.5 rounded-xl border border-gray-6 bg-gray-4 px-5 py-3 text-[0.9rem] font-semibold text-gray-12 shadow-md transition-all hover:-translate-y-px hover:border-gray-8 hover:bg-gray-5 hover:shadow-lg"
 														>
-															<Eye className="size-4" />
+															<Eye className="size-[1.15rem] text-gray-11 transition-colors group-hover:text-gray-12" />
 															See what I&apos;m capturing
 														</button>
 													</div>
