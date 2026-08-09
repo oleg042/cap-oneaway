@@ -1890,6 +1890,7 @@ export const useWebRecorder = ({
 		// Live preview of what's being captured — the SAME stream MediaRecorder writes: the composited
 		// screen + camera-bubble output when compositing (mixedStream), else the raw display. A muted <video>
 		// on this shows EXACTLY what's recorded, bubble included. Null until a capture is live.
-		getCaptureStream: () => mixedStreamRef.current ?? displayStreamRef.current ?? null,
+		getCaptureStream: () =>
+			mixedStreamRef.current ?? displayStreamRef.current ?? null,
 	};
 };

@@ -21,14 +21,16 @@ import { CameraSelector } from "./CameraSelector";
 import { type BubblePosition, isCompositorSupported } from "./cameraCompositor";
 import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
-import { LiveCaptureView, RecordingControls, UploadRing } from "./RecordingControls";
+import {
+	LiveCaptureView,
+	RecordingControls,
+	UploadRing,
+} from "./RecordingControls";
 import { useConcurrentRecordingWarning } from "./useConcurrentRecordingWarning";
 import { MicrophoneSelector } from "./MicrophoneSelector";
 import { RecordingButton } from "./RecordingButton";
 import { RecordingCapToggle } from "./RecordingCapToggle";
-import {
-	type RecordingMode,
-} from "./RecordingModeSelector";
+import { type RecordingMode } from "./RecordingModeSelector";
 import { RememberDevicesToggle } from "./RememberDevicesToggle";
 import { SystemAudioToggle } from "./SystemAudioToggle";
 import { useCameraDevices } from "./useCameraDevices";
@@ -397,8 +399,14 @@ export const WebRecorderDialog = ({
 	// Byte-level upload progress across the streamed chunks (0..1) for the timer-side ring. null until the
 	// first chunk exists (so we don't flash an empty ring at record start). Cap streams chunks to R2 AS you
 	// record, so this rides near-full while the network keeps pace and finishes the tail after Stop.
-	const uploadedBytes = chunkUploads.reduce((s, c) => s + (c.uploadedBytes || 0), 0);
-	const totalChunkBytes = chunkUploads.reduce((s, c) => s + (c.sizeBytes || 0), 0);
+	const uploadedBytes = chunkUploads.reduce(
+		(s, c) => s + (c.uploadedBytes || 0),
+		0,
+	);
+	const totalChunkBytes = chunkUploads.reduce(
+		(s, c) => s + (c.sizeBytes || 0),
+		0,
+	);
 	const uploadProgress =
 		totalChunkBytes > 0 ? Math.min(1, uploadedBytes / totalChunkBytes) : null;
 	// Cross-tab guard — concurrent takes are safe (separate Cap video/R2/spool) but usually a mis-click, so
@@ -503,20 +511,21 @@ export const WebRecorderDialog = ({
 									onClose={handleClose}
 								/>
 								{otherTabRecording && !concurrentWarnDismissed && (
-										<div className="flex items-start gap-2 rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
-											<span className="flex-1">
-												A recording is already running in another tab. You can still record here — they won't interfere.
-											</span>
-											<button
-												type="button"
-												onClick={() => setConcurrentWarnDismissed(true)}
-												className="shrink-0 font-medium text-amber-11 transition-colors hover:text-amber-12"
-											>
-												Dismiss
-											</button>
-										</div>
-									)}
-									{/* Two columns for screen captures: a control menu on the left, the big camera preview
+									<div className="flex items-start gap-2 rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
+										<span className="flex-1">
+											A recording is already running in another tab. You can
+											still record here — they won't interfere.
+										</span>
+										<button
+											type="button"
+											onClick={() => setConcurrentWarnDismissed(true)}
+											className="shrink-0 font-medium text-amber-11 transition-colors hover:text-amber-12"
+										>
+											Dismiss
+										</button>
+									</div>
+								)}
+								{/* Two columns for screen captures: a control menu on the left, the big camera preview
 								    on the right. `display: contents` keeps camera-only mode a single column. */}
 								<div
 									className={
@@ -531,130 +540,134 @@ export const WebRecorderDialog = ({
 										}
 									>
 										{isRecording ? (
-										<RecordingControls
-											durationMs={recordingTimerDisplayMs}
-											isPaused={isPaused}
-											hasAudioTrack={hasAudioTrack}
-											micDeviceId={selectedMicId}
-											uploadProgress={uploadProgress}
-											busy={isRestarting} /* NOT isBusy: isBusyPhase includes recording/paused, which would disable Stop/Pause/Cancel for the whole recording and trap the user until auto-stop */
-											onStop={handleStopClick}
-											onPause={pauseRecording}
-											onResume={resumeRecording}
-											onRestart={restartRecording}
-											onCancel={cancelRecording}
-										/>
+											<RecordingControls
+												durationMs={recordingTimerDisplayMs}
+												isPaused={isPaused}
+												hasAudioTrack={hasAudioTrack}
+												micDeviceId={selectedMicId}
+												uploadProgress={uploadProgress}
+												busy={
+													isRestarting
+												} /* NOT isBusy: isBusyPhase includes recording/paused, which would disable Stop/Pause/Cancel for the whole recording and trap the user until auto-stop */
+												onStop={handleStopClick}
+												onPause={pauseRecording}
+												onResume={resumeRecording}
+												onRestart={restartRecording}
+												onCancel={cancelRecording}
+											/>
 										) : isRestarting ? (
-										<div className="flex items-center gap-2 rounded-lg border border-gray-4 bg-gray-2 px-3 py-3 text-[0.9rem] font-medium text-gray-12">
-											<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-6 border-t-[#FD4F03]" />
-											Restarting…
-										</div>
+											<div className="flex items-center gap-2 rounded-lg border border-gray-4 bg-gray-2 px-3 py-3 text-[0.9rem] font-medium text-gray-12">
+												<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-6 border-t-[#FD4F03]" />
+												Restarting…
+											</div>
 										) : countingDown ? (
-										<StartingCountdown ms={startCountdownMs} />
+											<StartingCountdown ms={startCountdownMs} />
 										) : isFinalizing ? null : (
-										<>
-										{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
+											<>
+												{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
 										    getDisplayMedia dialog already asks screen vs window vs tab at Start, so pre-picking
 										    here was redundant. Recording is always screen (default 'fullscreen') + the optional
 										    camera bubble; webcam-only mode was intentionally dropped for the screen-first tool. */}
-										{screenCaptureWarning && (
-											<div className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
-												{screenCaptureWarning}
-											</div>
-										)}
-										<CameraSelector
-											selectedCameraId={selectedCameraId}
-											availableCameras={availableCameras}
-											dialogOpen={open}
-											disabled={isBusy}
-											open={cameraSelectOpen}
-											onOpenChange={(isOpen) => {
-												setCameraSelectOpen(isOpen);
-												if (isOpen) {
-													setMicSelectOpen(false);
-												}
-											}}
-											onCameraChange={handleCameraChange}
-											onRefreshDevices={refreshCameras}
-										/>
-										<MicrophoneSelector
-											selectedMicId={selectedMicId}
-											availableMics={availableMics}
-											dialogOpen={open}
-											disabled={isBusy || isRecording}
-											open={micSelectOpen}
-											onOpenChange={(isOpen) => {
-												setMicSelectOpen(isOpen);
-												if (isOpen) {
-													setCameraSelectOpen(false);
-												}
-											}}
-											onMicChange={handleMicChange}
-											onRefreshDevices={refreshMics}
-										/>
-										{recordingMode !== "camera" && (
-											<SystemAudioToggle
-												enabled={systemAudioEnabled}
-												disabled={isBusy}
-												recordingMode={recordingMode}
-												onToggle={handleSystemAudioChange}
-											/>
-										)}
-										<RecordingCapToggle
-											overridden={overrideDefaultCap}
-											disabled={isBusy || isRecording}
-											onToggle={setOverrideDefaultCap}
-										/>
-										<RememberDevicesToggle
-											enabled={rememberDevices}
-											disabled={isBusy || isRecording}
-											onToggle={handleRememberDevicesChange}
-										/>
-										<RecordingButton
-											isRecording={isRecording}
-											disabled={!canStartRecording || (isBusy && !isRecording)}
-											onStart={handleStartClick}
-											onStop={handleStopClick}
-										/>
-										</>
+												{screenCaptureWarning && (
+													<div className="rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
+														{screenCaptureWarning}
+													</div>
+												)}
+												<CameraSelector
+													selectedCameraId={selectedCameraId}
+													availableCameras={availableCameras}
+													dialogOpen={open}
+													disabled={isBusy}
+													open={cameraSelectOpen}
+													onOpenChange={(isOpen) => {
+														setCameraSelectOpen(isOpen);
+														if (isOpen) {
+															setMicSelectOpen(false);
+														}
+													}}
+													onCameraChange={handleCameraChange}
+													onRefreshDevices={refreshCameras}
+												/>
+												<MicrophoneSelector
+													selectedMicId={selectedMicId}
+													availableMics={availableMics}
+													dialogOpen={open}
+													disabled={isBusy || isRecording}
+													open={micSelectOpen}
+													onOpenChange={(isOpen) => {
+														setMicSelectOpen(isOpen);
+														if (isOpen) {
+															setCameraSelectOpen(false);
+														}
+													}}
+													onMicChange={handleMicChange}
+													onRefreshDevices={refreshMics}
+												/>
+												{recordingMode !== "camera" && (
+													<SystemAudioToggle
+														enabled={systemAudioEnabled}
+														disabled={isBusy}
+														recordingMode={recordingMode}
+														onToggle={handleSystemAudioChange}
+													/>
+												)}
+												<RecordingCapToggle
+													overridden={overrideDefaultCap}
+													disabled={isBusy || isRecording}
+													onToggle={setOverrideDefaultCap}
+												/>
+												<RememberDevicesToggle
+													enabled={rememberDevices}
+													disabled={isBusy || isRecording}
+													onToggle={handleRememberDevicesChange}
+												/>
+												<RecordingButton
+													isRecording={isRecording}
+													disabled={
+														!canStartRecording || (isBusy && !isRecording)
+													}
+													onStart={handleStartClick}
+													onStop={handleStopClick}
+												/>
+											</>
 										)}
 									</div>
 									{showPreviewColumn && (
 										<div className="flex min-w-0 flex-1 items-start pt-[2px]">
 											{inRecordingUI ? (
-										capturePreviewOpen ? (
-										<div className="relative w-full">
-											<LiveCaptureView getStream={getCaptureStream} />
-											<button
-												type="button"
-												onClick={() => setCapturePreviewOpen(false)}
-												className="absolute right-2.5 top-2.5 z-10 inline-flex items-center gap-1.5 rounded-lg border border-gray-7 bg-gray-1/90 px-3 py-1.5 text-[12px] font-semibold text-gray-12 shadow-lg backdrop-blur transition-colors hover:bg-gray-3"
-											>
-												<EyeOff className="size-4" /> Hide preview
-											</button>
-										</div>
-										) : (
-										<div className="flex aspect-video w-full items-center justify-center rounded-lg bg-gray-2">
-											<button
-												type="button"
-												onClick={() => setCapturePreviewOpen(true)}
-												className="inline-flex items-center gap-2 rounded-lg border border-gray-6 bg-gray-4 px-4 py-2.5 text-[0.85rem] font-semibold text-gray-12 shadow-sm transition-colors hover:border-gray-7 hover:bg-gray-5"
-											>
-												<Eye className="size-4" />
-												See what I&apos;m capturing
-											</button>
-										</div>
-										)
-										) : (
-										<CameraPreviewArea
-												cameraStream={previewCameraStream}
-												cameraOn={cameraOn}
-												canEnableCamera={canEnableCamera}
-												onToggleCamera={onToggleCamera}
-												position={bubblePosition}
-												onPositionChange={setBubblePosition}
-										/>
-										)}
+												capturePreviewOpen ? (
+													<div className="relative w-full">
+														<LiveCaptureView getStream={getCaptureStream} />
+														<button
+															type="button"
+															onClick={() => setCapturePreviewOpen(false)}
+															className="absolute right-2.5 top-2.5 z-10 inline-flex items-center gap-1.5 rounded-lg border border-gray-7 bg-gray-1/90 px-3 py-1.5 text-[12px] font-semibold text-gray-12 shadow-lg backdrop-blur transition-colors hover:bg-gray-3"
+														>
+															<EyeOff className="size-4" /> Hide preview
+														</button>
+													</div>
+												) : (
+													<div className="flex aspect-video w-full items-center justify-center rounded-lg bg-gray-2">
+														<button
+															type="button"
+															onClick={() => setCapturePreviewOpen(true)}
+															className="inline-flex items-center gap-2 rounded-lg border border-gray-6 bg-gray-4 px-4 py-2.5 text-[0.85rem] font-semibold text-gray-12 shadow-sm transition-colors hover:border-gray-7 hover:bg-gray-5"
+														>
+															<Eye className="size-4" />
+															See what I&apos;m capturing
+														</button>
+													</div>
+												)
+											) : (
+												<CameraPreviewArea
+													cameraStream={previewCameraStream}
+													cameraOn={cameraOn}
+													canEnableCamera={canEnableCamera}
+													onToggleCamera={onToggleCamera}
+													position={bubblePosition}
+													onPositionChange={setBubblePosition}
+												/>
+											)}
 										</div>
 									)}
 								</div>
@@ -697,16 +710,34 @@ export const WebRecorderDialog = ({
 									</div>
 								)}
 								{phase === "error" && (
-										<div className="rounded-md border border-red-6 bg-red-3/70 px-3 py-3 text-xs text-red-12">
-											<div className="font-medium">Recording failed</div>
-											<div className="mt-1 leading-snug">{errorDownload ? "Your recording is safe — download it below, then try again." : "Please try again."}</div>
-											{errorDownload && (
-												<a href={errorDownload.url} download={errorDownload.fileName} className="mt-2 inline-block font-medium text-blue-11 underline underline-offset-2 hover:text-blue-12">Download recording</a>
-											)}
-											<Button variant="blue" size="sm" className="mt-3 w-full" onClick={resetState} disabled={isRestarting}>Try again</Button>
+									<div className="rounded-md border border-red-6 bg-red-3/70 px-3 py-3 text-xs text-red-12">
+										<div className="font-medium">Recording failed</div>
+										<div className="mt-1 leading-snug">
+											{errorDownload
+												? "Your recording is safe — download it below, then try again."
+												: "Please try again."}
 										</div>
+										{errorDownload && (
+											<a
+												href={errorDownload.url}
+												download={errorDownload.fileName}
+												className="mt-2 inline-block font-medium text-blue-11 underline underline-offset-2 hover:text-blue-12"
+											>
+												Download recording
+											</a>
 										)}
-										{phase === "idle" && recoveredDownloads.length > 0 && (
+										<Button
+											variant="blue"
+											size="sm"
+											className="mt-3 w-full"
+											onClick={resetState}
+											disabled={isRestarting}
+										>
+											Try again
+										</Button>
+									</div>
+								)}
+								{phase === "idle" && recoveredDownloads.length > 0 && (
 									<div className="rounded-md border border-blue-6 bg-blue-3/60 px-3 py-2">
 										<div className="text-xs font-medium text-blue-12">
 											Recovered recordings

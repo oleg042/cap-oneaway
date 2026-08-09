@@ -927,14 +927,25 @@ async function saveTranscription(
 	// (streaming uploader), so we subtract the recording length (videoDurationMs) from the record→ready
 	// wall-clock — otherwise the number would include the whole recording, which isn't "pipeline" time.
 	const oaStats: Record<string, number> = {};
-	if (transcribeMs != null && Number.isFinite(transcribeMs) && transcribeMs > 200) {
+	if (
+		transcribeMs != null &&
+		Number.isFinite(transcribeMs) &&
+		transcribeMs > 200
+	) {
 		oaStats.transcribeMs = Math.round(transcribeMs);
 	}
 	if (video.createdAt) {
 		const recordToReady = Date.now() - new Date(video.createdAt).getTime();
-		const recordingMs = Math.max(0, videoDurationMs ?? (video.duration ?? 0) * 1000);
+		const recordingMs = Math.max(
+			0,
+			videoDurationMs ?? (video.duration ?? 0) * 1000,
+		);
 		const pipeline = recordToReady - recordingMs;
-		if (Number.isFinite(pipeline) && pipeline > 0 && pipeline < 24 * 60 * 60 * 1000) {
+		if (
+			Number.isFinite(pipeline) &&
+			pipeline > 0 &&
+			pipeline < 24 * 60 * 60 * 1000
+		) {
 			oaStats.endToEndMs = Math.round(pipeline);
 		}
 	}

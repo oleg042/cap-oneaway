@@ -59,7 +59,8 @@ export function EmbedRecorder() {
 					).__oaLeavingAfterRecording = true;
 					let returnTo = "";
 					try {
-						returnTo = new URLSearchParams(window.location.search).get("returnTo") ?? "";
+						returnTo =
+							new URLSearchParams(window.location.search).get("returnTo") ?? "";
 					} catch {
 						returnTo = "";
 					}

@@ -91,10 +91,19 @@ export function UploadRing({ progress }: { progress: number }) {
 		<span
 			className="inline-flex shrink-0"
 			title={done ? "Uploaded" : `Uploading… ${Math.round(pct * 100)}%`}
-			aria-label={done ? "Upload complete" : `Uploading ${Math.round(pct * 100)} percent`}
+			aria-label={
+				done ? "Upload complete" : `Uploading ${Math.round(pct * 100)} percent`
+			}
 		>
 			<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
-				<circle cx="8" cy="8" r={r} fill="none" className="stroke-gray-5" strokeWidth="2" />
+				<circle
+					cx="8"
+					cy="8"
+					r={r}
+					fill="none"
+					className="stroke-gray-5"
+					strokeWidth="2"
+				/>
 				<circle
 					cx="8"
 					cy="8"
@@ -153,16 +162,14 @@ export function RecordingControls({
 							inset: "-0.35rem",
 							transform: ignited ? "scale(2.4)" : "scale(0.5)",
 							opacity: ignited ? 0 : 0.85,
-							transition:
-								"transform 700ms ease-out, opacity 700ms ease-out",
+							transition: "transform 700ms ease-out, opacity 700ms ease-out",
 						}}
 					/>
 					<span
 						className={`inline-block size-2 rounded-full bg-red-500 ${isPaused ? "" : "animate-pulse"}`}
 						style={{
 							transform: ignited ? "scale(1)" : "scale(0)",
-							transition:
-								"transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+							transition: "transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)",
 						}}
 					/>
 				</span>
@@ -212,7 +219,11 @@ export function RecordingControls({
 					aria-label={isPaused ? "Resume recording" : "Pause recording"}
 					className="flex size-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-gray-5 text-gray-11 transition-colors hover:bg-gray-3 disabled:cursor-not-allowed disabled:opacity-50"
 				>
-					{isPaused ? <Play className="size-4" /> : <Pause className="size-4" />}
+					{isPaused ? (
+						<Play className="size-4" />
+					) : (
+						<Pause className="size-4" />
+					)}
 				</button>
 			</div>
 
