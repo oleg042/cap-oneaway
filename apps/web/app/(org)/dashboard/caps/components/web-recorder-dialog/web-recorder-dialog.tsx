@@ -8,7 +8,7 @@ import {
 	DialogTrigger,
 } from "@cap/ui";
 import { AnimatePresence, motion } from "framer-motion";
-import { MonitorIcon } from "lucide-react";
+import { Eye, EyeOff, MonitorIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDashboardContext } from "../../../Contexts";
@@ -105,6 +105,9 @@ export const WebRecorderDialog = ({
 	// Off by default → the 20-min auto-stop guardrail is active. Deliberately re-defaults off each time the
 	// dialog opens (reset in handleOpenChange) so lifting the cap is always a conscious per-recording choice.
 	const [overrideDefaultCap, setOverrideDefaultCap] = useState(false);
+	// The live capture preview (a mirror of what you're recording) is OFF by default — showing your own
+	// screen back to you is distracting (and can hall-of-mirror). The user reveals it on demand.
+	const [capturePreviewOpen, setCapturePreviewOpen] = useState(false);
 	const [recordingMode, setRecordingMode] =
 		useState<RecordingMode>("fullscreen");
 	const [cameraSelectOpen, setCameraSelectOpen] = useState(false);
@@ -619,7 +622,29 @@ export const WebRecorderDialog = ({
 									{showPreviewColumn && (
 										<div className="flex min-w-0 flex-1 items-start pt-[2px]">
 											{inRecordingUI ? (
-										<LiveCaptureView getStream={getCaptureStream} />
+										capturePreviewOpen ? (
+										<div className="relative w-full">
+											<LiveCaptureView getStream={getCaptureStream} />
+											<button
+												type="button"
+												onClick={() => setCapturePreviewOpen(false)}
+												className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur transition-colors hover:bg-black/80"
+											>
+												<EyeOff className="size-3.5" /> Hide preview
+											</button>
+										</div>
+										) : (
+										<button
+											type="button"
+											onClick={() => setCapturePreviewOpen(true)}
+											className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-5 bg-gray-2 text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+										>
+											<Eye className="size-5" />
+											<span className="text-[0.85rem] font-medium">
+												See what I&apos;m capturing
+											</span>
+										</button>
+										)
 										) : (
 										<CameraPreviewArea
 												cameraStream={previewCameraStream}
