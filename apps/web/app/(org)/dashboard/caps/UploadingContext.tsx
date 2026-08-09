@@ -73,6 +73,16 @@ function ForbidLeaveWhenUploading() {
 
 	useEffect(() => {
 		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+			// Skip the prompt when the embed recorder is INTENTIONALLY redirecting a finished tape back to the
+			// portal board (EmbedRecorder sets this flag right before navigating). The tape is already saved +
+			// uploaded at that point, so "changes may not be saved" would be a confusing false alarm.
+			if (
+				typeof window !== "undefined" &&
+				(window as unknown as { __oaLeavingAfterRecording?: boolean })
+					.__oaLeavingAfterRecording
+			) {
+				return;
+			}
 			if (uploadStatus?.status) {
 				e.preventDefault();
 				// Chrome requires returnValue to be set

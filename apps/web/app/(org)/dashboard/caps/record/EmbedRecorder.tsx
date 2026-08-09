@@ -50,6 +50,13 @@ export function EmbedRecorder() {
 					// NAVIGATE this tab to the board URL the portal signed into the recorder URL (returnTo), so
 					// we deterministically land on the board. The finished tape appears via the portal's
 					// server-side reconcile regardless. Only absolute https URLs are honored.
+					//
+					// Suppress the "Leave site? Changes may not be saved" beforeunload prompt (see
+					// ForbidLeaveWhenUploading) — the tape is already uploaded, so this redirect is intentional
+					// and safe; the prompt would otherwise be a confusing false alarm.
+					(
+						window as unknown as { __oaLeavingAfterRecording?: boolean }
+					).__oaLeavingAfterRecording = true;
 					let returnTo = "";
 					try {
 						returnTo = new URLSearchParams(window.location.search).get("returnTo") ?? "";
