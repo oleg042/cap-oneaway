@@ -140,7 +140,7 @@ const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
 	maxHeight: 1080,
 	videoBitrate: "5M",
 	audioBitrate: "64k",
-	crf: 23,
+	crf: 27,
 	preset: "medium",
 	remuxOnly: false,
 	timeoutMs: PROCESS_TIMEOUT_MS,
