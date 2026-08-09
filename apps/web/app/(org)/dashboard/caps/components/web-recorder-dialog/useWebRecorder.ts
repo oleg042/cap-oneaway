@@ -98,6 +98,10 @@ interface UseWebRecorderOptions {
 
 const INSTANT_UPLOAD_REQUEST_INTERVAL_MS = 1000;
 const INSTANT_CHUNK_GUARD_DELAY_MS = INSTANT_UPLOAD_REQUEST_INTERVAL_MS * 3;
+// Pre-roll before the recorder actually starts, so the user can switch to the tab/window they want to
+// capture (otherwise the first frames are the launcher). Surfaced as a "Starting…" progress bar; the start
+// sound + recording ignite the instant it ends.
+const START_COUNTDOWN_MS = 2000;
 
 type InstantChunkingMode = "manual" | "timeslice";
 type InstantVideoCreation = {
@@ -222,6 +226,7 @@ export const useWebRecorder = ({
 	onRecorded,
 }: UseWebRecorderOptions) => {
 	const [phase, setPhase] = useState<RecorderPhase>("idle");
+	const [countingDown, setCountingDown] = useState(false); // 2s pre-roll before recording actually starts
 	const [videoId, setVideoId] = useState<VideoId | null>(null);
 	const [hasAudioTrack, setHasAudioTrack] = useState(false);
 	const [isSettingUp, setIsSettingUp] = useState(false);
@@ -1257,6 +1262,13 @@ export const useWebRecorder = ({
 			lastInstantChunkAtRef.current = null;
 			clearInstantChunkGuard();
 			stopInstantChunkInterval();
+			// Pre-roll: stream + recorder are ready, but hold recorder.start() for START_COUNTDOWN_MS so the
+			// user can switch to what they want to capture (getDisplayMedia already returned, so this tab has
+			// focus again). The launcher shows a "Starting…" bar meanwhile; the start sound + recording fire
+			// the instant this resolves (onRecordingStart + updatePhase("recording") below).
+			setCountingDown(true);
+			await new Promise<void>((resolve) => setTimeout(resolve, START_COUNTDOWN_MS));
+			setCountingDown(false);
 			if (pipeline.mode === "streaming-webm") {
 				let startedWithTimeslice = false;
 				try {
@@ -1842,6 +1854,8 @@ export const useWebRecorder = ({
 		videoId,
 		hasAudioTrack,
 		chunkUploads,
+		countingDown,
+		startCountdownMs: START_COUNTDOWN_MS,
 		errorDownload,
 		completedShareUrl,
 		recoveredDownloads,

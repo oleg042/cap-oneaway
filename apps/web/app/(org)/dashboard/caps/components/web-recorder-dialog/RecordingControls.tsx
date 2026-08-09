@@ -131,6 +131,13 @@ export function RecordingControls({
 	onCancel,
 }: RecordingControlsProps) {
 	const [confirmCancel, setConfirmCancel] = useState(false);
+	// One-shot "ignition" — this component mounts exactly when recording starts (after the pre-roll), so the
+	// dot pops in and a ring pulses out once: the explicit "we're live now" signal, synced with the start sound.
+	const [ignited, setIgnited] = useState(false);
+	useEffect(() => {
+		const id = requestAnimationFrame(() => setIgnited(true));
+		return () => cancelAnimationFrame(id);
+	}, []);
 	// Shared look for the two secondary actions so they clearly read as buttons (not caption text).
 	const secondaryBtn =
 		"flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-5 py-[0.5rem] text-[0.8rem] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
@@ -138,9 +145,27 @@ export function RecordingControls({
 		<div className="flex flex-col gap-[0.75rem] text-gray-12">
 			{/* status + timer */}
 			<div className="flex h-[2rem] items-center gap-2 rounded-lg border border-gray-3 px-[0.5rem]">
-				<span
-					className={`inline-block size-2 rounded-full bg-red-500 ${isPaused ? "" : "animate-pulse"}`}
-				/>
+				<span className="relative inline-flex size-2 items-center justify-center">
+					{/* one-shot ignite ring — expands + fades once the moment recording starts */}
+					<span
+						className="pointer-events-none absolute rounded-full border border-red-500"
+						style={{
+							inset: "-0.35rem",
+							transform: ignited ? "scale(2.4)" : "scale(0.5)",
+							opacity: ignited ? 0 : 0.85,
+							transition:
+								"transform 700ms ease-out, opacity 700ms ease-out",
+						}}
+					/>
+					<span
+						className={`inline-block size-2 rounded-full bg-red-500 ${isPaused ? "" : "animate-pulse"}`}
+						style={{
+							transform: ignited ? "scale(1)" : "scale(0)",
+							transition:
+								"transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+						}}
+					/>
+				</span>
 				<span className="text-[0.875rem] font-medium">
 					{isPaused ? "Paused" : "Recording"}
 				</span>

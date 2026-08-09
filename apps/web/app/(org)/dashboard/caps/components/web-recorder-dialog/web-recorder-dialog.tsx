@@ -57,6 +57,37 @@ const waitForNextFrame = () =>
 		window.requestAnimationFrame(() => resolve());
 	});
 
+// "Starting…" pre-roll shown in the launcher's left panel while we hold recorder.start() for a beat, so the
+// user can switch to what they want to capture. A thin orange bar fills 0→100% over `ms` via a CSS width
+// transition (smooth, no JS timing loop); when it completes, the recording UI + start sound take over.
+function StartingCountdown({ ms }: { ms: number }) {
+	const [w, setW] = useState(0);
+	useEffect(() => {
+		const id = requestAnimationFrame(() => setW(100));
+		return () => cancelAnimationFrame(id);
+	}, []);
+	return (
+		<div className="flex flex-col gap-2 rounded-lg border border-gray-4 bg-gray-2 px-3 py-3">
+			<div className="flex items-center gap-2 text-[0.9rem] font-medium text-gray-12">
+				<span className="relative flex size-2.5">
+					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FD4F03] opacity-60" />
+					<span className="relative inline-flex size-2.5 rounded-full bg-[#FD4F03]" />
+				</span>
+				Starting…
+			</div>
+			<div className="text-[11px] leading-snug text-gray-9">
+				Switch to the tab or window you want to record.
+			</div>
+			<div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-4">
+				<div
+					className="h-full rounded-full bg-[#FD4F03]"
+					style={{ width: `${w}%`, transition: `width ${ms}ms linear` }}
+				/>
+			</div>
+		</div>
+	);
+}
+
 export const WebRecorderDialog = ({
 	embed,
 	onRecorded,
@@ -185,6 +216,8 @@ export const WebRecorderDialog = ({
 		durationMs,
 		hasAudioTrack,
 		chunkUploads,
+		countingDown,
+		startCountdownMs,
 		errorDownload,
 		completedShareUrl,
 		recoveredDownloads,
@@ -475,6 +508,8 @@ export const WebRecorderDialog = ({
 											onRestart={restartRecording}
 											onCancel={cancelRecording}
 										/>
+										) : countingDown ? (
+										<StartingCountdown ms={startCountdownMs} />
 										) : isFinalizing ? null : (
 										<>
 										{/* OneAway: the Full Screen / Window / Tab / Camera picker is hidden. Chrome's native
