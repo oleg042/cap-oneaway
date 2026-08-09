@@ -21,7 +21,7 @@ import { CameraSelector } from "./CameraSelector";
 import { type BubblePosition, isCompositorSupported } from "./cameraCompositor";
 import { HowItWorksButton } from "./HowItWorksButton";
 import { HowItWorksPanel } from "./HowItWorksPanel";
-import { LiveCaptureView, RecordingControls } from "./RecordingControls";
+import { LiveCaptureView, RecordingControls, UploadRing } from "./RecordingControls";
 import { useConcurrentRecordingWarning } from "./useConcurrentRecordingWarning";
 import { MicrophoneSelector } from "./MicrophoneSelector";
 import { RecordingButton } from "./RecordingButton";
@@ -583,9 +583,16 @@ export const WebRecorderDialog = ({
 								)}
 								{isFinalizing && (
 									<div className="flex items-center gap-2 rounded-md border border-blue-6 bg-blue-3/60 px-3 py-2.5 text-xs font-medium text-blue-12">
-										<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-blue-9 border-t-transparent" />
+										{phase === "uploading" && uploadProgress != null ? (
+											// Real upload-progress ring (buffered-mode uploads happen here, post-Stop).
+											<UploadRing progress={uploadProgress} />
+										) : (
+											<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-blue-9 border-t-transparent" />
+										)}
 										{phase === "uploading"
-											? "Uploading…"
+											? uploadProgress != null
+												? `Uploading… ${Math.round(uploadProgress * 100)}%`
+												: "Uploading…"
 											: phase === "converting"
 												? "Converting…"
 												: "Finishing up…"}

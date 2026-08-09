@@ -81,8 +81,8 @@ interface RecordingControlsProps {
 }
 
 // Minimalistic upload-progress ring: a muted track + an orange arc that fills as recorded chunks upload.
-// Small enough to sit inline next to the timer; smoothly animated.
-function UploadRing({ progress }: { progress: number }) {
+// Small enough to sit inline next to the timer; smoothly animated. Also reused by the finalize status.
+export function UploadRing({ progress }: { progress: number }) {
 	const r = 6;
 	const c = 2 * Math.PI * r;
 	const pct = Math.max(0, Math.min(1, progress));
