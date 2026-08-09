@@ -44,35 +44,29 @@ export function EmbedRecorder() {
 			<WebRecorderDialog
 				embed
 				onRecorded={() => {
-					// The portal opened this recorder in a NEW TAB and reconciles the finished tape server-side
-					// (it polls Cap), so there's nothing to hand back here. Return focus to the opener (the
-					// portal Tapes board tab) BEFORE self-closing, so the browser lands THERE rather than on a
-					// random adjacent tab. focus() and closed are both cross-origin-safe on window.opener.
-					const opener = (window.opener as Window | null) ?? null;
-					let openerAlive = false;
+					// Return the user to the portal Tapes board. Browsers BLOCK programmatic cross-tab focus, so
+					// the old window.opener.focus()+close() could NOT reliably bring the board tab forward — the
+					// recorder tab just closed and the browser landed on whatever tab was adjacent. Instead we
+					// NAVIGATE this tab to the board URL the portal signed into the recorder URL (returnTo), so
+					// we deterministically land on the board. The finished tape appears via the portal's
+					// server-side reconcile regardless. Only absolute https URLs are honored.
+					let returnTo = "";
 					try {
-						openerAlive = !!opener && opener !== window && !opener.closed;
+						returnTo = new URLSearchParams(window.location.search).get("returnTo") ?? "";
 					} catch {
-						// `closed` should be readable cross-origin, but never let a throw abort the close.
-						openerAlive = !!opener && opener !== window;
+						returnTo = "";
 					}
-					if (!openerAlive || !opener) {
-						// Tapes board tab was closed → nothing to return to. Leave this tab on the completed
-						// state (Open Share Link); the finished tape still appears via the server-side reconcile.
+					if (returnTo && /^https:\/\/[^/]+/i.test(returnTo)) {
+						window.location.replace(returnTo); // replace() so Back doesn't return to the finished recorder
 						return;
 					}
-					setTimeout(() => {
-						try {
-							opener.focus(); // bring the Tapes board tab forward
-						} catch {
-							/* cross-origin focus is permitted; guard defensively */
-						}
-						try {
-							window.close();
-						} catch {
-							/* ignore */
-						}
-					}, 600);
+					// No returnTo (older launcher, or the param was stripped) → best-effort self-close; the
+					// reconcile still surfaces the tape on the board whenever the user gets back to it.
+					try {
+						window.close();
+					} catch {
+						/* ignore */
+					}
 				}}
 			/>
 		</div>

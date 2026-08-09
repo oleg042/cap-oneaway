@@ -184,6 +184,7 @@ export const WebRecorderDialog = ({
 		phase,
 		durationMs,
 		hasAudioTrack,
+		chunkUploads,
 		errorDownload,
 		completedShareUrl,
 		recoveredDownloads,
@@ -324,6 +325,13 @@ export const WebRecorderDialog = ({
 	// rather than flashing the setup panel; the controls read `busy` (isRestarting) and stay disabled until
 	// the fresh capture is live.
 	const inRecordingUI = isRecording || isRestarting;
+	// Byte-level upload progress across the streamed chunks (0..1) for the timer-side ring. null until the
+	// first chunk exists (so we don't flash an empty ring at record start). Cap streams chunks to R2 AS you
+	// record, so this rides near-full while the network keeps pace and finishes the tail after Stop.
+	const uploadedBytes = chunkUploads.reduce((s, c) => s + (c.uploadedBytes || 0), 0);
+	const totalChunkBytes = chunkUploads.reduce((s, c) => s + (c.sizeBytes || 0), 0);
+	const uploadProgress =
+		totalChunkBytes > 0 ? Math.min(1, uploadedBytes / totalChunkBytes) : null;
 	// Cross-tab guard — concurrent takes are safe (separate Cap video/R2/spool) but usually a mis-click, so
 	// warn (dismissibly) when another tab is already recording.
 	const otherTabRecording = useConcurrentRecordingWarning(isRecording);
@@ -459,8 +467,8 @@ export const WebRecorderDialog = ({
 											isPaused={isPaused}
 											hasAudioTrack={hasAudioTrack}
 											micDeviceId={selectedMicId}
+											uploadProgress={uploadProgress}
 											busy={isRestarting} /* NOT isBusy: isBusyPhase includes recording/paused, which would disable Stop/Pause/Cancel for the whole recording and trap the user until auto-stop */
-											canPause={Boolean(pauseRecording && resumeRecording)}
 											onStop={handleStopClick}
 											onPause={pauseRecording}
 											onResume={resumeRecording}

@@ -175,6 +175,7 @@ export async function transcribeVideoWorkflow(
 			videoData.video,
 			transcription,
 			transcribeMs,
+			videoDurationMs,
 		);
 	} catch (error) {
 		await markError(videoId);
@@ -877,6 +878,9 @@ async function saveTranscription(
 	// surface a per-step "transcribe" timing. Measured in the orchestrator; a workflow resume would replay
 	// the cached step at ~0ms, so the write below guards on >200ms.
 	transcribeMs?: number,
+	// Recording length (ms). Subtracted from the record→ready wall-clock so endToEndMs measures the
+	// POST-recording pipeline only (see the oaStats block below).
+	videoDurationMs?: number,
 ): Promise<void> {
 	"use step";
 
@@ -918,16 +922,20 @@ async function saveTranscription(
 
 	// Per-step timings for the OneAway portal (deep-merged into metadata.oaPipeline; never clobbers
 	// aiTitle/summary/etc.). transcribeMs = this step's wall-clock (guarded >200ms so a cached workflow
-	// replay doesn't write ~0). endToEndMs = record-created → fully processed, the headline "how long until
-	// it's ready" number, computed here at COMPLETE (the last processing step) from the video's createdAt.
+	// replay doesn't write ~0). endToEndMs = the POST-recording pipeline: from RECORDING END to fully
+	// processed (upload-flush + encode + transcribe + AI). The video row is created at recording START
+	// (streaming uploader), so we subtract the recording length (videoDurationMs) from the record→ready
+	// wall-clock — otherwise the number would include the whole recording, which isn't "pipeline" time.
 	const oaStats: Record<string, number> = {};
 	if (transcribeMs != null && Number.isFinite(transcribeMs) && transcribeMs > 200) {
 		oaStats.transcribeMs = Math.round(transcribeMs);
 	}
 	if (video.createdAt) {
-		const e2e = Date.now() - new Date(video.createdAt).getTime();
-		if (Number.isFinite(e2e) && e2e > 0 && e2e < 24 * 60 * 60 * 1000) {
-			oaStats.endToEndMs = Math.round(e2e);
+		const recordToReady = Date.now() - new Date(video.createdAt).getTime();
+		const recordingMs = Math.max(0, videoDurationMs ?? (video.duration ?? 0) * 1000);
+		const pipeline = recordToReady - recordingMs;
+		if (Number.isFinite(pipeline) && pipeline > 0 && pipeline < 24 * 60 * 60 * 1000) {
+			oaStats.endToEndMs = Math.round(pipeline);
 		}
 	}
 	await db()

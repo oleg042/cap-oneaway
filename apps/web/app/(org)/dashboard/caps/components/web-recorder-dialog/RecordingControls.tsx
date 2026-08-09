@@ -67,6 +67,10 @@ interface RecordingControlsProps {
 	isPaused: boolean;
 	hasAudioTrack: boolean;
 	micDeviceId?: string | null;
+	// Byte-level chunk-upload progress (0..1) while recording — Cap streams the take to R2 as you record,
+	// and this ring shows it keeping pace (and finishing the last chunks after Stop). null = nothing uploaded
+	// yet (pre-first-chunk); we hide the ring then.
+	uploadProgress?: number | null;
 	busy?: boolean;
 	canPause?: boolean;
 	onStop: () => void;
@@ -74,6 +78,39 @@ interface RecordingControlsProps {
 	onResume?: () => void;
 	onRestart?: () => void;
 	onCancel: () => void;
+}
+
+// Minimalistic upload-progress ring: a muted track + an orange arc that fills as recorded chunks upload.
+// Small enough to sit inline next to the timer; smoothly animated.
+function UploadRing({ progress }: { progress: number }) {
+	const r = 6;
+	const c = 2 * Math.PI * r;
+	const pct = Math.max(0, Math.min(1, progress));
+	const done = pct >= 0.999;
+	return (
+		<span
+			className="inline-flex shrink-0"
+			title={done ? "Uploaded" : `Uploading… ${Math.round(pct * 100)}%`}
+			aria-label={done ? "Upload complete" : `Uploading ${Math.round(pct * 100)} percent`}
+		>
+			<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+				<circle cx="8" cy="8" r={r} fill="none" className="stroke-gray-5" strokeWidth="2" />
+				<circle
+					cx="8"
+					cy="8"
+					r={r}
+					fill="none"
+					stroke="#FD4F03"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeDasharray={c}
+					strokeDashoffset={c * (1 - pct)}
+					transform="rotate(-90 8 8)"
+					style={{ transition: "stroke-dashoffset 200ms linear" }}
+				/>
+			</svg>
+		</span>
+	);
 }
 
 // The left-panel control set WHILE recording — the launcher panel becomes this. Timer + status, a live mic
@@ -84,6 +121,7 @@ export function RecordingControls({
 	isPaused,
 	hasAudioTrack,
 	micDeviceId,
+	uploadProgress,
 	busy = false,
 	canPause = true,
 	onStop,
@@ -106,9 +144,12 @@ export function RecordingControls({
 				<span className="text-[0.875rem] font-medium">
 					{isPaused ? "Paused" : "Recording"}
 				</span>
-				<span className="ml-auto font-mono text-[0.95rem] tabular-nums">
-					{fmtDuration(durationMs)}
-				</span>
+				<div className="ml-auto flex items-center gap-2">
+					{uploadProgress != null && <UploadRing progress={uploadProgress} />}
+					<span className="font-mono text-[0.95rem] tabular-nums">
+						{fmtDuration(durationMs)}
+					</span>
+				</div>
 			</div>
 
 			{/* live mic level */}
