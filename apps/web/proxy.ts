@@ -102,6 +102,7 @@ export async function proxy(request: NextRequest) {
 				path.startsWith("/terms") ||
 				path.startsWith("/verify-otp") ||
 				path.startsWith("/embed/") ||
+				path.startsWith("/sounds/") ||
 				path.startsWith("/.well-known/workflow/")
 			) &&
 			process.env.NODE_ENV !== "development"
