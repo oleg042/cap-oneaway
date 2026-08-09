@@ -527,7 +527,7 @@ export const WebRecorderDialog = ({
 												: "contents"
 										}
 									>
-										{inRecordingUI ? (
+										{isRecording ? (
 										<RecordingControls
 											durationMs={recordingTimerDisplayMs}
 											isPaused={isPaused}
@@ -541,6 +541,11 @@ export const WebRecorderDialog = ({
 											onRestart={restartRecording}
 											onCancel={cancelRecording}
 										/>
+										) : isRestarting ? (
+										<div className="flex items-center gap-2 rounded-lg border border-gray-4 bg-gray-2 px-3 py-3 text-[0.9rem] font-medium text-gray-12">
+											<span className="inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-gray-6 border-t-[#FD4F03]" />
+											Restarting…
+										</div>
 										) : countingDown ? (
 										<StartingCountdown ms={startCountdownMs} />
 										) : isFinalizing ? null : (

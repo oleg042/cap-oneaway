@@ -231,6 +231,7 @@ export const useWebRecorder = ({
 	const [hasAudioTrack, setHasAudioTrack] = useState(false);
 	const [isSettingUp, setIsSettingUp] = useState(false);
 	const [isRestarting, setIsRestarting] = useState(false);
+	const isRestartingRef = useRef(false); // synchronous mirror so startRecording can skip the pre-roll on restart
 	const [chunkUploads, setChunkUploads] = useState<ChunkUploadState[]>([]);
 	const [errorDownload, setErrorDownload] =
 		useState<RecordingFailureDownload | null>(null);
@@ -1265,10 +1266,15 @@ export const useWebRecorder = ({
 			// Pre-roll: stream + recorder are ready, but hold recorder.start() for START_COUNTDOWN_MS so the
 			// user can switch to what they want to capture (getDisplayMedia already returned, so this tab has
 			// focus again). The launcher shows a "Starting…" bar meanwhile; the start sound + recording fire
-			// the instant this resolves (onRecordingStart + updatePhase("recording") below).
-			setCountingDown(true);
-			await new Promise<void>((resolve) => setTimeout(resolve, START_COUNTDOWN_MS));
-			setCountingDown(false);
+			// the instant this resolves (onRecordingStart + updatePhase("recording") below). SKIPPED on a
+			// restart — you're re-recording the same thing, so there's no "switch tabs" pause.
+			if (!isRestartingRef.current) {
+				setCountingDown(true);
+				await new Promise<void>((resolve) =>
+					setTimeout(resolve, START_COUNTDOWN_MS),
+				);
+				setCountingDown(false);
+			}
 			if (pipeline.mode === "streaming-webm") {
 				let startedWithTimeslice = false;
 				try {
@@ -1771,6 +1777,7 @@ export const useWebRecorder = ({
 		if (phase !== "recording" && phase !== "paused") return;
 
 		setIsRestarting(true);
+		isRestartingRef.current = true;
 
 		try {
 			try {
@@ -1793,6 +1800,7 @@ export const useWebRecorder = ({
 			await cleanupRecordingState();
 			updatePhase("idle");
 		} finally {
+			isRestartingRef.current = false;
 			setIsRestarting(false);
 		}
 	}, [

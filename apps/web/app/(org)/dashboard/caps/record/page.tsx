@@ -1,20 +1,15 @@
 import type { Metadata } from "next";
 import { EmbedRecorder } from "./EmbedRecorder";
-import { RecordVideoPage } from "./RecordVideoPage";
 
 export const metadata: Metadata = {
 	title: "Record a Tape",
 };
 
-export default async function RecordVideoRoute({
-	searchParams,
-}: {
-	searchParams: Promise<{ embed?: string }>;
-}) {
-	const sp = await searchParams;
-	// The OneAway portal opens this route with ?embed=1 (minimal branded recorder, no Cap chooser/FAQ) in
-	// a NEW TAB. On completion the recorder self-closes; the portal reconciles the finished tape from Cap
-	// server-side, so no callback/postMessage is needed.
-	if (sp?.embed === "1") return <EmbedRecorder />;
-	return <RecordVideoPage />;
+// OneAway only supports the branded in-browser recorder — there is no Tape desktop app and no Chrome
+// extension. So this route ALWAYS renders the minimal branded recorder, never Cap's stock chooser
+// (Open Tape Desktop / Record in Browser / Add to Chrome / FAQ), regardless of the ?embed param. The portal
+// still opens it with ?embed=1 (+ the tape_embed cookie) so the dashboard layout drops its chrome; hitting
+// the URL directly now shows the same clean recorder instead of the confusing Cap chooser.
+export default function RecordVideoRoute() {
+	return <EmbedRecorder />;
 }
