@@ -153,6 +153,35 @@ export const WebRecorderDialog = ({
 		});
 	}, []);
 
+	// Unlock an audio element for a later programmatic play() that happens OUTSIDE a user gesture. The start
+	// sound fires ~2s after the Start click (after the pre-roll countdown, often once the user has tabbed
+	// away), by which point the browser's autoplay policy blocks a cold play(). A volume-0 play→pause during
+	// the click "activates" the element so the real play at ignition is allowed; volume is restored so it's
+	// audible. Deliberately NOT awaited by the caller, so getDisplayMedia keeps its transient activation.
+	const primeAudio = useCallback((audio: HTMLAudioElement | null) => {
+		if (!audio) {
+			return;
+		}
+		try {
+			audio.volume = 0;
+			const p = audio.play();
+			const reset = () => {
+				audio.pause();
+				audio.currentTime = 0;
+				audio.volume = 1;
+			};
+			if (p && typeof p.then === "function") {
+				p.then(reset).catch(() => {
+					audio.volume = 1;
+				});
+			} else {
+				reset();
+			}
+		} catch {
+			audio.volume = 1;
+		}
+	}, []);
+
 	const handleRecordingStartSound = useCallback(() => {
 		playAudio(startSoundRef.current);
 	}, [playAudio]);
@@ -316,13 +345,17 @@ export const WebRecorderDialog = ({
 	};
 
 	const handleStartClick = useCallback(async () => {
+		// Prime the sounds inside THIS click gesture so the start sound (which fires ~2s later, after the
+		// pre-roll) isn't blocked by the autoplay policy. Not awaited → getDisplayMedia keeps its activation.
+		primeAudio(startSoundRef.current);
+		primeAudio(stopSoundRef.current);
 		if (recordingMode === "camera") {
 			cameraPreviewRef.current?.stopStream();
 			await waitForNextFrame();
 		}
 
 		await startRecording();
-	}, [recordingMode, startRecording]);
+	}, [recordingMode, startRecording, primeAudio]);
 
 	const handleClose = () => {
 		if (!isBusy) {
