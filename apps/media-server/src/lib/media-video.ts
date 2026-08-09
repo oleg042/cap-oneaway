@@ -139,7 +139,7 @@ const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
 	maxWidth: 1920,
 	maxHeight: 1080,
 	videoBitrate: "5M",
-	audioBitrate: "128k",
+	audioBitrate: "64k",
 	crf: 23,
 	preset: "medium",
 	remuxOnly: false,
