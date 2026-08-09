@@ -628,22 +628,22 @@ export const WebRecorderDialog = ({
 											<button
 												type="button"
 												onClick={() => setCapturePreviewOpen(false)}
-												className="absolute right-2 top-2 z-10 inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur transition-colors hover:bg-black/80"
+												className="absolute right-2.5 top-2.5 z-10 inline-flex items-center gap-1.5 rounded-lg border border-gray-7 bg-gray-1/90 px-3 py-1.5 text-[12px] font-semibold text-gray-12 shadow-lg backdrop-blur transition-colors hover:bg-gray-3"
 											>
-												<EyeOff className="size-3.5" /> Hide preview
+												<EyeOff className="size-4" /> Hide preview
 											</button>
 										</div>
 										) : (
-										<button
-											type="button"
-											onClick={() => setCapturePreviewOpen(true)}
-											className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-5 bg-gray-2 text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
-										>
-											<Eye className="size-5" />
-											<span className="text-[0.85rem] font-medium">
+										<div className="flex aspect-video w-full items-center justify-center rounded-lg bg-gray-2">
+											<button
+												type="button"
+												onClick={() => setCapturePreviewOpen(true)}
+												className="inline-flex items-center gap-2 rounded-lg border border-gray-6 bg-gray-4 px-4 py-2.5 text-[0.85rem] font-semibold text-gray-12 shadow-sm transition-colors hover:border-gray-7 hover:bg-gray-5"
+											>
+												<Eye className="size-4" />
 												See what I&apos;m capturing
-											</span>
-										</button>
+											</button>
+										</div>
 										)
 										) : (
 										<CameraPreviewArea
