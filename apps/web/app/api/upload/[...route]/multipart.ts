@@ -12,7 +12,7 @@ import {
 } from "@cap/web-backend";
 import { Policy, Video } from "@cap/web-domain";
 import { zValidator } from "@hono/zod-validator";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Effect, Option, Schedule } from "effect";
 import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
@@ -488,6 +488,19 @@ app.post(
 					);
 
 					if (isRawRecorderUpload(subpath)) {
+						// Post-record upload flush (record-end → this /complete) for the OneAway portal. Streaming
+						// uploads run DURING recording, so this is just the tail. record-end = createdAt (record
+						// start) + duration; guarded to a sane positive window. Merged into metadata.oaPipeline.
+						const recordEndMs =
+							reportedDuration != null && video.createdAt
+								? new Date(video.createdAt).getTime() + reportedDuration * 1000
+								: null;
+						const flushMs =
+							recordEndMs != null ? Date.now() - recordEndMs : null;
+						const uploadMs =
+							flushMs != null && flushMs > 0 && flushMs < 86_400_000
+								? Math.round(flushMs)
+								: null;
 						yield* db.use((db) =>
 							db
 								.update(Db.videos)
@@ -499,6 +512,11 @@ app.post(
 									width: updateIfDefined(body.width, Db.videos.width),
 									height: updateIfDefined(body.height, Db.videos.height),
 									fps: updateIfDefined(body.fps, Db.videos.fps),
+									...(uploadMs != null
+										? {
+												metadata: sql`JSON_MERGE_PATCH(COALESCE(${Db.videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('uploadMs', ${uploadMs})))`,
+											}
+										: {}),
 								})
 								.where(
 									and(

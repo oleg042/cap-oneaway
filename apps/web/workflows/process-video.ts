@@ -3,7 +3,7 @@ import { users, videos, videoUploads } from "@cap/database/schema";
 import { serverEnv } from "@cap/env";
 import { Storage } from "@cap/web-backend/src/Storage/index";
 import { Video } from "@cap/web-domain";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { FatalError } from "workflow";
 import { isAiGenerationEnabledForUser } from "@/lib/ai-generation-entitlement";
 import { transcribeVideo } from "@/lib/transcribe";
@@ -309,6 +309,7 @@ async function processVideoOnMediaServer(
 		})
 		.where(eq(videoUploads.videoId, videoId as Video.VideoId));
 
+	const transcodeStartedAt = Date.now();
 	await startMediaServerProcessJob(mediaServerUrl, {
 		videoId,
 		userId,
@@ -321,7 +322,22 @@ async function processVideoOnMediaServer(
 		inputExtension: getInputExtension(rawFileKey),
 	});
 
-	return await waitForProcessingCompletion(videoId);
+	const completion = await waitForProcessingCompletion(videoId);
+
+	// Per-step timing for the OneAway portal: webm → result.mp4 wall-clock (transcode job start → ready),
+	// deep-merged into videos.metadata.oaPipeline (the portal reconcile picks it up). Guarded >200ms so a
+	// cached workflow-step replay doesn't overwrite a real value with ~0.
+	const transcodeMs = Date.now() - transcodeStartedAt;
+	if (Number.isFinite(transcodeMs) && transcodeMs > 200) {
+		await db()
+			.update(videos)
+			.set({
+				metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('transcodeMs', ${Math.round(transcodeMs)})))`,
+			})
+			.where(eq(videos.id, videoId as Video.VideoId));
+	}
+
+	return completion;
 }
 
 function getMetadataFromVideoRow(
