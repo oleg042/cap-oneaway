@@ -1129,8 +1129,18 @@ export const useWebRecorder = ({
 				isCompositorSupported()
 			) {
 				try {
+					// The bubble is a ~190px circle (cropped to a centered square), so a full-res webcam frame —
+					// often 1080p by default — is pure waste: the compositor would decode + drawImage-scale ~2M
+					// px every frame into a tiny dot. Cap to 640×480 (~5× fewer pixels, still oversamples the
+					// bubble) to cut the camera-side per-frame compositor load. `ideal` degrades gracefully on
+					// webcams that lack the exact mode.
 					const cam = await navigator.mediaDevices.getUserMedia({
-						video: { deviceId: { exact: selectedCameraId } },
+						video: {
+							deviceId: { exact: selectedCameraId },
+							width: { ideal: 640 },
+							height: { ideal: 480 },
+							frameRate: { ideal: 30 },
+						},
 						audio: false,
 					});
 					cameraStreamRef.current = cam;
