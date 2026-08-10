@@ -310,6 +310,19 @@ export const createCameraCompositor = async (
 	let dbgWritten = 0;
 	let dbgEncDrop = 0;
 	let dbgInflight = 0;
+	// TEMP on-screen readout: a fixed corner overlay so the live OUTPUT framerate is visible while recording
+	// without opening DevTools. Green ≥20 / amber ≥10 / red <10 fps. Self-contained (appended to body,
+	// removed on teardown) so it needs no UI wiring. Remove alongside the console instrumentation later.
+	const dbgOverlay =
+		typeof document !== "undefined" ? document.createElement("div") : null;
+	if (dbgOverlay) {
+		dbgOverlay.style.cssText =
+			"position:fixed;top:10px;left:10px;z-index:2147483647;background:rgba(0,0,0,0.78);" +
+			"color:#4ade80;font:600 12px/1.35 ui-monospace,Menlo,monospace;padding:5px 9px;" +
+			"border-radius:7px;pointer-events:none;white-space:pre;box-shadow:0 2px 8px rgba(0,0,0,0.45);";
+		dbgOverlay.textContent = "● starting…";
+		document.body.appendChild(dbgOverlay);
+	}
 	const dbgTimer = setInterval(() => {
 		const avg = dbgComposited
 			? (dbgCompositeMs / dbgComposited).toFixed(1)
@@ -319,6 +332,12 @@ export const createCameraCompositor = async (
 				`throttle=${dbgThrottle}/s composite=${avg}ms inflight=${dbgInflight} ` +
 				`desiredSize=${writer.desiredSize} canvas=${W}x${H}@${fps}fps`,
 		);
+		if (dbgOverlay) {
+			const out = dbgWritten;
+			dbgOverlay.style.color =
+				out >= 20 ? "#4ade80" : out >= 10 ? "#fbbf24" : "#f87171";
+			dbgOverlay.textContent = `● ${out} fps out · src ${dbgSrcRead} · drop ${dbgEncDrop} · ${avg}ms`;
+		}
 		dbgSrcRead = 0;
 		dbgThrottle = 0;
 		dbgComposited = 0;
@@ -330,6 +349,7 @@ export const createCameraCompositor = async (
 	const teardown = () => {
 		disposed = true;
 		clearInterval(dbgTimer);
+		dbgOverlay?.remove();
 		try {
 			screenReader.cancel().catch(() => {});
 		} catch {
