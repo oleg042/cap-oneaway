@@ -141,10 +141,11 @@ const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
 	videoBitrate: "5M",
 	audioBitrate: "64k",
 	// The capture is VP9/webm (chosen for progressive upload), so a VP9->H264 re-encode here is
-	// unavoidable. CRF 23 crushed 1080p screen text to ~0.5 Mbps — the second lossy generation was
-	// throwing away most of the detail. CRF 18 is near-visually-lossless: it preserves the source's
-	// sharpness through the required re-encode. Files stay small anyway (screen content is low-entropy).
-	crf: 18,
+	// unavoidable. History: CRF 23 was too soft at 1080p, so we ran CRF 18 (near-lossless) to recover it.
+	// Now that output is 1440p, the extra pixels carry the perceived sharpness, so we can compress harder:
+	// CRF 22 at 1440p ≈ CRF ~20 at 1080p perceptually — text stays crisp while files drop ~40% vs CRF 18
+	// (also eases delivery bitrate for viewers on slow connections). Screen content is low-entropy regardless.
+	crf: 22,
 	preset: "fast",
 	remuxOnly: false,
 	timeoutMs: PROCESS_TIMEOUT_MS,
