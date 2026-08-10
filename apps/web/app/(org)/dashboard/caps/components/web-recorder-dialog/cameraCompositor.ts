@@ -297,8 +297,35 @@ export const createCameraCompositor = async (
 		}
 	};
 
+	// --- TEMP instrumentation: 1 Hz snapshot of the compositor pipeline to diagnose the external-display
+	// frame collapse. Tagged "[compositor]" for console filtering; remove once the cause is confirmed.
+	let dbgSrcRead = 0;
+	let dbgThrottle = 0;
+	let dbgComposited = 0;
+	let dbgCompositeMs = 0;
+	let dbgWritten = 0;
+	let dbgEncDrop = 0;
+	let dbgInflight = 0;
+	const dbgTimer = setInterval(() => {
+		const avg = dbgComposited
+			? (dbgCompositeMs / dbgComposited).toFixed(1)
+			: "0";
+		console.log(
+			`[compositor] src=${dbgSrcRead}/s written=${dbgWritten}/s encDrop=${dbgEncDrop}/s ` +
+				`throttle=${dbgThrottle}/s composite=${avg}ms inflight=${dbgInflight} ` +
+				`desiredSize=${writer.desiredSize} canvas=${W}x${H}@${fps}fps`,
+		);
+		dbgSrcRead = 0;
+		dbgThrottle = 0;
+		dbgComposited = 0;
+		dbgCompositeMs = 0;
+		dbgWritten = 0;
+		dbgEncDrop = 0;
+	}, 1000);
+
 	const teardown = () => {
 		disposed = true;
+		clearInterval(dbgTimer);
 		try {
 			screenReader.cancel().catch(() => {});
 		} catch {
@@ -448,28 +475,68 @@ export const createCameraCompositor = async (
 					frame.close();
 					break;
 				}
+				dbgSrcRead++;
 				const ts = frame.timestamp ?? 0;
 				if (firstSettled && ts - lastWrittenUs < frameIntervalUs - 1000) {
 					// Too soon since the last written frame — drop to cap output near `fps`.
+					dbgThrottle++;
 					frame.close();
 					continue;
 				}
-				lastWrittenUs = ts;
+				const compositeStart = performance.now();
 				try {
 					drawComposite(frame);
 				} finally {
 					frame.close();
 				}
-				const out = new FrameCtor(canvas, { timestamp: ts });
-				try {
-					await writer.write(out);
-				} finally {
-					out.close();
-				}
+				dbgComposited++;
+				dbgCompositeMs += performance.now() - compositeStart;
+
 				if (!firstSettled) {
-					firstSettled = true;
-					firstResolve();
+					// First frame: await exactly one write so the start-gate fires only once a real frame is
+					// encoded. The generator queue is empty here, so awaiting a single frame cannot stall.
+					lastWrittenUs = ts;
+					const firstOut = new FrameCtor(canvas, { timestamp: ts });
+					dbgWritten++;
+					try {
+						await writer.write(firstOut);
+						firstSettled = true;
+						firstResolve();
+					} finally {
+						firstOut.close();
+					}
+					continue;
 				}
+
+				// Steady state: NEVER await the encoder. Awaiting coupled a slow encoder's backpressure to this
+				// read loop and collapsed output to <1fps. Enqueue only when the generator has queue room
+				// (desiredSize > 0); otherwise DROP the composited frame. The loop then always runs at source
+				// cadence — under encoder overload we shed frames (lower fps) instead of freezing.
+				const ds = writer.desiredSize;
+				if (ds !== null && ds <= 0) {
+					dbgEncDrop++;
+					// Emitted nothing, so leave lastWrittenUs unchanged (do not over-throttle the next frame).
+					continue;
+				}
+				lastWrittenUs = ts;
+				const out = new FrameCtor(canvas, { timestamp: ts });
+				dbgInflight++;
+				dbgWritten++;
+				// VideoFrames are GPU-backed — close on both success and failure of the (unawaited) write.
+				writer.write(out).then(
+					() => {
+						out.close();
+						dbgInflight--;
+					},
+					() => {
+						try {
+							out.close();
+						} catch {
+							/* ignore */
+						}
+						dbgInflight--;
+					},
+				);
 			}
 		} catch (err) {
 			if (!firstSettled) {
