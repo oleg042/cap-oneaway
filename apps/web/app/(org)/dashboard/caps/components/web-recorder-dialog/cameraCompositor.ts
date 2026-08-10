@@ -416,7 +416,10 @@ export const createCameraCompositor = async (
 		const vw = cam?.displayWidth ?? 0;
 		const vh = cam?.displayHeight ?? 0;
 		if (!cameraEnded && cam && vw > 0 && vh > 0) {
-			const crop = Math.min(vw, vh);
+			// Zoom the bubble in ~5%: the raw webcam angle is wide, leaving the person small in the circle.
+			// Crop a slightly smaller centered square (÷ZOOM) and let the same bubble destination scale it up.
+			const CAMERA_BUBBLE_ZOOM = 1.05;
+			const crop = Math.min(vw, vh) / CAMERA_BUBBLE_ZOOM;
 			const sx = (vw - crop) / 2;
 			const sy = (vh - crop) / 2;
 			try {
