@@ -1456,7 +1456,7 @@ export async function processVideo(
 			"-crf",
 			opts.crf.toString(),
 			"-vf",
-			`scale='min(${opts.maxWidth},iw)':'min(${opts.maxHeight},ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+			`scale='min(${opts.maxWidth},iw)':'min(${opts.maxHeight},ih)':force_original_aspect_ratio=decrease:flags=lanczos,scale=trunc(iw/2)*2:trunc(ih/2)*2`,
 			"-pix_fmt",
 			"yuv420p",
 			"-level:v",

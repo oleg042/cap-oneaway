@@ -244,14 +244,15 @@ export const createCameraCompositor = async (
 	const cameraTrack = cameraStream.getVideoTracks()[0] ?? null;
 
 	const settings = screenTrack.getSettings();
-	// Cap the composited canvas to 720p (aspect-preserved). The final video is capped to 720p anyway, and
-	// compositing a native 4K external display — draw + a per-frame canvas→VideoFrame readback at ~8 MP,
-	// 30×/sec — starved the frame rate to <1 fps. Downscaling HERE, where the heavy per-frame work lives,
-	// keeps 4K/external displays at ~30 fps. 720p is plenty for a screen recording (crisp text at CRF 20)
-	// and far lighter than compositing at native res. Even dimensions for the h264 encoders downstream.
+	// Cap the composited canvas to 1080p (aspect-preserved). Compositing a native 4K external display — draw
+	// + a per-frame canvas→VideoFrame readback at ~8 MP, 30×/sec — starved the frame rate to <1 fps; 1080p is
+	// ~4× lighter and keeps 4K/external displays at ~30 fps. We do NOT downscale to the final 720p here:
+	// canvas drawImage is a low-quality (bilinear) scaler that turns text to mush — the server transcode does
+	// the 720p downscale with a proper lanczos filter. imageSmoothingQuality "high" (set below) sharpens the
+	// only canvas resize left (native 4K → 1080p). Even dimensions for the h264 encoders downstream.
 	const rawW = Math.max(2, Math.round(opts.width || settings.width || 1280));
 	const rawH = Math.max(2, Math.round(opts.height || settings.height || 720));
-	const capScale = Math.min(1, 1280 / rawW, 720 / rawH);
+	const capScale = Math.min(1, 1920 / rawW, 1080 / rawH);
 	const W = Math.max(2, Math.round((rawW * capScale) / 2) * 2);
 	const H = Math.max(2, Math.round((rawH * capScale) / 2) * 2);
 	const fps = Math.max(1, Math.min(Math.round(opts.fps || 30), 60));
@@ -264,6 +265,10 @@ export const createCameraCompositor = async (
 	// back a stale/torn surface on readback. alpha:false is enough and cheaper (no alpha channel).
 	const ctx = canvas.getContext("2d", { alpha: false });
 	if (!ctx) throw new CompositorUnsupportedError();
+	// Best-quality resampling for any drawImage resize (4K→1080p screen, camera bubble scaling) — the default
+	// "low" is bilinear and softens text badly. Cheap: only matters when a source is actually downscaled.
+	ctx.imageSmoothingEnabled = true;
+	ctx.imageSmoothingQuality = "high";
 
 	// Everything created past here must be released if setup fails (below returns/throws) — tracked so
 	// the catch can tear it all down and the caller degrades to a clean screen-only path.
