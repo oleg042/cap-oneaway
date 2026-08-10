@@ -255,11 +255,12 @@ export const createCameraCompositor = async (
 	const capScale = Math.min(1, 1920 / rawW, 1080 / rawH);
 	const W = Math.max(2, Math.round((rawW * capScale) / 2) * 2);
 	const H = Math.max(2, Math.round((rawH * capScale) / 2) * 2);
-	// Cap the composited output at 24fps (film cadence — plenty smooth for screen content). The draw +
-	// full-canvas GPU readback is the compositor's real cost; at 24fps we do ~20% fewer of them per second
-	// AND widen the per-frame budget 33ms→41ms, so transient main-thread/GPU/GC spikes stop tipping a frame
-	// over budget and dropping it. The throttle below sheds anything above 24 BEFORE the expensive composite.
-	const fps = Math.max(1, Math.min(Math.round(opts.fps || 30), 24));
+	// Output cadence follows the source rate (capped at 60). Do NOT cap this below the capture fps with this
+	// simple min-interval throttle: capping a ~29–30fps source at 24 phase-aligns the throttle so it keeps
+	// every OTHER frame (~14fps out) — dramatically worse than 24, and observed live via the overlay. It's
+	// also unnecessary — the composite measured ~0.9ms/frame, so the compositor isn't the bottleneck; there's
+	// no headroom to reclaim by throttling. Let every captured frame through.
+	const fps = Math.max(1, Math.min(Math.round(opts.fps || 30), 60));
 	const frameIntervalUs = 1_000_000 / fps;
 
 	const canvas = document.createElement("canvas");
