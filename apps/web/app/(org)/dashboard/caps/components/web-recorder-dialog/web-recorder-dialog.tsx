@@ -538,7 +538,7 @@ export const WebRecorderDialog = ({
 									onClose={handleClose}
 								/>
 								{otherTabRecording && !concurrentWarnDismissed && (
-									<div className="flex items-start gap-2 rounded-md border border-amber-6 bg-amber-3/60 px-3 py-2 text-xs leading-snug text-amber-12">
+									<div className="flex items-start gap-2 rounded-md border border-[#FD4F03] bg-[#FD4F03]/10 px-3 py-2 text-xs leading-snug text-white">
 										<span className="flex-1">
 											A recording is already running in another tab. You can
 											still record here — they won't interfere.
@@ -546,7 +546,7 @@ export const WebRecorderDialog = ({
 										<button
 											type="button"
 											onClick={() => setConcurrentWarnDismissed(true)}
-											className="shrink-0 font-medium text-amber-11 transition-colors hover:text-amber-12"
+											className="shrink-0 font-medium text-white/70 transition-colors hover:text-white"
 										>
 											Dismiss
 										</button>
