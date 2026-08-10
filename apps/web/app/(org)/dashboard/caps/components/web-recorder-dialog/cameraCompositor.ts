@@ -31,6 +31,11 @@ export const clamp = (value: number, lo: number, hi: number) => {
 	return Math.min(Math.max(value, lo), hi);
 };
 
+// Bubble zoom: crop/scale the webcam ~10% tighter so the person fills more of the circle (the raw webcam
+// angle is wide). SHARED by the compositor (canvas source-crop) and the launcher positioner (canvas
+// cover-scale) so the pre-record framing exactly matches the recorded bubble. Bump for a tighter crop.
+export const CAMERA_BUBBLE_ZOOM = 1.1;
+
 // Geometry is derived as a FRACTION of the shorter dimension so the bubble reads the same on a 4K
 // screen and a 1280 one, with an inset margin so it's never edge-glued. The absolute px clamps below
 // only make sense in RECORDING pixels; the preview pad (a small element) must use pure proportions
@@ -416,9 +421,8 @@ export const createCameraCompositor = async (
 		const vw = cam?.displayWidth ?? 0;
 		const vh = cam?.displayHeight ?? 0;
 		if (!cameraEnded && cam && vw > 0 && vh > 0) {
-			// Zoom the bubble in ~5%: the raw webcam angle is wide, leaving the person small in the circle.
-			// Crop a slightly smaller centered square (÷ZOOM) and let the same bubble destination scale it up.
-			const CAMERA_BUBBLE_ZOOM = 1.05;
+			// Zoom the bubble in (see CAMERA_BUBBLE_ZOOM): crop a smaller centered square (÷ZOOM) so the same
+			// bubble destination scales it up — shared with the launcher positioner so their framing matches.
 			const crop = Math.min(vw, vh) / CAMERA_BUBBLE_ZOOM;
 			const sx = (vw - crop) / 2;
 			const sy = (vh - crop) / 2;

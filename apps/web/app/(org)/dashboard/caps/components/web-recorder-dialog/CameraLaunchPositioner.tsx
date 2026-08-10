@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
 	type BubbleCorner,
 	type BubblePosition,
+	CAMERA_BUBBLE_ZOOM,
 	computeBubbleMetrics,
 	PREVIEW_GEOM,
 	resolveBubbleCenter,
@@ -123,7 +124,8 @@ export function CameraLaunchPositioner({
 							if (video && video.readyState >= 2 && video.videoWidth) {
 								const vw = video.videoWidth;
 								const vh = video.videoHeight;
-								const scale = Math.max((2 * r) / vw, (2 * r) / vh);
+								const scale =
+									Math.max((2 * r) / vw, (2 * r) / vh) * CAMERA_BUBBLE_ZOOM;
 								const dw = vw * scale;
 								const dh = vh * scale;
 								ctx.translate(cx, cy);
