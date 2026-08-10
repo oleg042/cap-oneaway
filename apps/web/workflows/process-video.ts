@@ -344,6 +344,23 @@ async function processVideoOnMediaServer(
 		}
 	}
 
+	// Final result.mp4 size (bytes) for the portal's pipeline stats — HEAD the object we just produced.
+	// Non-fatal, exactly like transcodeMs above: a failure here must never fail an already-transcoded video.
+	try {
+		const head = await bucket.headObject(outputKey).pipe(runWorkflowPromise);
+		const bytes = Number((head as { ContentLength?: number }).ContentLength);
+		if (Number.isFinite(bytes) && bytes > 0) {
+			await db()
+				.update(videos)
+				.set({
+					metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('resultBytes', ${Math.round(bytes)})))`,
+				})
+				.where(eq(videos.id, videoId as Video.VideoId));
+		}
+	} catch {
+		/* size metric failed — ignore */
+	}
+
 	return completion;
 }
 
