@@ -136,11 +136,11 @@ const LEGACY_FFMPEG_HLS_CAPABILITIES: FfmpegHlsCapabilities = {
 let ffmpegHlsCapabilitiesPromise: Promise<FfmpegHlsCapabilities> | undefined;
 
 const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
-	maxWidth: 1280,
-	maxHeight: 720,
+	maxWidth: 1920,
+	maxHeight: 1080,
 	videoBitrate: "5M",
 	audioBitrate: "64k",
-	crf: 20,
+	crf: 23,
 	preset: "fast",
 	remuxOnly: false,
 	timeoutMs: PROCESS_TIMEOUT_MS,
