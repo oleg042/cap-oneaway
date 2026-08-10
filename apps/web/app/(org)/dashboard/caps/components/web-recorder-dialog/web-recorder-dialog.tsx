@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import { Eye, EyeOff, MonitorIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useDashboardContext } from "../../../Contexts";
 import { CameraPreviewArea } from "./CameraPreviewArea";
@@ -461,6 +462,32 @@ export const WebRecorderDialog = ({
 
 	return (
 		<>
+			{/* Portal-embed only: once Stop is pressed, cover the whole recorder with a clean status screen
+			    through upload → finish → completed, so the "completed" review UI never flashes for a beat
+			    before we redirect back to the board. Portaled to <body> at max z-index so it sits above the
+			    Radix dialog (which also portals to body). */}
+			{embed &&
+				(phase === "uploading" ||
+					phase === "converting" ||
+					phase === "completed") &&
+				typeof document !== "undefined" &&
+				createPortal(
+					<div className="fixed inset-0 z-[2147483647] flex flex-col items-center justify-center gap-3 bg-gray-1">
+						<span
+							className="inline-block h-7 w-7 animate-spin rounded-full border-2 border-gray-6"
+							style={{ borderTopColor: "#FD4F03" }}
+							aria-hidden="true"
+						/>
+						<span className="text-[13px] text-gray-9">
+							{phase === "uploading" && uploadProgress != null
+								? `Uploading… ${Math.round(uploadProgress * 100)}%`
+								: phase === "completed"
+									? "Taking you back…"
+									: "Finishing up…"}
+						</span>
+					</div>,
+					document.body,
+				)}
 			<Dialog open={open} onOpenChange={handleOpenChange}>
 				{/* No launch button in the portal embed — the dialog auto-opens (browser is the only option). */}
 				{!embed && (
