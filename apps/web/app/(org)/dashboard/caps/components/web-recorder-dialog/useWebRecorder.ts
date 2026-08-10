@@ -1246,6 +1246,11 @@ export const useWebRecorder = ({
 
 			const recorder = new MediaRecorder(mixedStream, {
 				mimeType: pipeline.mimeType,
+				// Provision the composited 1080p capture at ~3 Mbps. Chrome's default under-provisions the
+				// MediaRecorder, so the source webm comes out soft/blocky (worse than Loom 720p), and CRF-26
+				// on the server can't recover detail the capture never kept. 3 Mbps is a moderate middle
+				// ground — clearly sharper than the default, while CRF-26 still caps the final file size.
+				videoBitsPerSecond: 3_000_000,
 			});
 			recorder.ondataavailable = handleRecorderDataAvailable;
 			recorder.onstop = onRecorderStop;

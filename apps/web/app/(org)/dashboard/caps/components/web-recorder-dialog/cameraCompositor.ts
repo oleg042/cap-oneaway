@@ -244,8 +244,16 @@ export const createCameraCompositor = async (
 	const cameraTrack = cameraStream.getVideoTracks()[0] ?? null;
 
 	const settings = screenTrack.getSettings();
-	const W = Math.max(2, Math.round(opts.width || settings.width || 1280));
-	const H = Math.max(2, Math.round(opts.height || settings.height || 720));
+	// Cap the composited canvas to 1080p (aspect-preserved). The final video is downscaled to 1080p anyway,
+	// and compositing a native 4K external display — draw + a per-frame canvas→VideoFrame readback at ~8 MP,
+	// 30×/sec — starves the frame rate to <1 fps. Downscaling HERE, where the heavy per-frame work lives,
+	// keeps 4K/USB-C displays at ~30 fps for zero output-quality change. Laptop captures are already ≤1080p
+	// (capScale === 1), so they're untouched. Even dimensions for the h264 encoders downstream.
+	const rawW = Math.max(2, Math.round(opts.width || settings.width || 1280));
+	const rawH = Math.max(2, Math.round(opts.height || settings.height || 720));
+	const capScale = Math.min(1, 1920 / rawW, 1080 / rawH);
+	const W = Math.max(2, Math.round((rawW * capScale) / 2) * 2);
+	const H = Math.max(2, Math.round((rawH * capScale) / 2) * 2);
 	const fps = Math.max(1, Math.min(Math.round(opts.fps || 30), 60));
 	const frameIntervalUs = 1_000_000 / fps;
 
