@@ -1442,10 +1442,13 @@ export async function processVideo(
 		metadata.duration,
 		opts.timeoutMs,
 	);
+	// -threads sized to the container: 32 vCPU ÷ 4 concurrent jobs (effectiveMax) = 8, so even a full
+	// concurrent burst (4×8) exactly fills the box with zero oversubscription, while a solo job runs ~4×
+	// faster than the old fixed 2. Keep ≤ (container vCPU ÷ maxConcurrent) if the box is ever resized.
 	const ffmpegArgs: string[] = [
 		"ffmpeg",
 		"-threads",
-		"2",
+		"8",
 		...extraInputArgs,
 		"-i",
 		inputPath,
