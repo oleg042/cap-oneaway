@@ -141,7 +141,7 @@ const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
 	videoBitrate: "5M",
 	audioBitrate: "64k",
 	crf: 20,
-	preset: "medium",
+	preset: "fast",
 	remuxOnly: false,
 	timeoutMs: PROCESS_TIMEOUT_MS,
 };
