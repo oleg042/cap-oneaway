@@ -7,8 +7,8 @@ export const NO_CAMERA_VALUE = "__no_camera__";
 // raw numbers (e.g. fallback stream dimensions) read these instead of
 // re-hardcoding them next to the constraints object.
 export const DISPLAY_MEDIA_IDEAL = {
-	width: 1920,
-	height: 1080,
+	width: 2560,
+	height: 1440,
 	frameRate: 30,
 } as const;
 

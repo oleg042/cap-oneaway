@@ -136,8 +136,8 @@ const LEGACY_FFMPEG_HLS_CAPABILITIES: FfmpegHlsCapabilities = {
 let ffmpegHlsCapabilitiesPromise: Promise<FfmpegHlsCapabilities> | undefined;
 
 const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
-	maxWidth: 1920,
-	maxHeight: 1080,
+	maxWidth: 2560,
+	maxHeight: 1440,
 	videoBitrate: "5M",
 	audioBitrate: "64k",
 	// The capture is VP9/webm (chosen for progressive upload), so a VP9->H264 re-encode here is

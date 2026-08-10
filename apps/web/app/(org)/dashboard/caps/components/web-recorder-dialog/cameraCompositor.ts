@@ -252,7 +252,7 @@ export const createCameraCompositor = async (
 	// only canvas resize left (native 4K → 1080p). Even dimensions for the h264 encoders downstream.
 	const rawW = Math.max(2, Math.round(opts.width || settings.width || 1280));
 	const rawH = Math.max(2, Math.round(opts.height || settings.height || 720));
-	const capScale = Math.min(1, 1920 / rawW, 1080 / rawH);
+	const capScale = Math.min(1, 2560 / rawW, 1440 / rawH); // canvas cap raised 1080p→1440p (M4 has headroom; overlay busy% verifies)
 	const W = Math.max(2, Math.round((rawW * capScale) / 2) * 2);
 	const H = Math.max(2, Math.round((rawH * capScale) / 2) * 2);
 	// Output cadence follows the source rate (capped at 60). Do NOT cap this below the capture fps with this
@@ -311,6 +311,7 @@ export const createCameraCompositor = async (
 	let dbgWritten = 0;
 	let dbgEncDrop = 0;
 	let dbgInflight = 0;
+	let dbgReadbackMs = 0;
 	// TEMP on-screen readout: a fixed corner overlay so the live OUTPUT framerate is visible while recording
 	// without opening DevTools. Green ≥20 / amber ≥10 / red <10 fps. Self-contained (appended to body,
 	// removed on teardown) so it needs no UI wiring. Remove alongside the console instrumentation later.
@@ -335,14 +336,23 @@ export const createCameraCompositor = async (
 		);
 		if (dbgOverlay) {
 			const out = dbgWritten;
+			// work = draw + canvas→VideoFrame readback: the compositor's whole synchronous per-frame cost.
+			// busy% = that work as a fraction of wall-clock — how much of ONE core our compositing eats.
+			// (Browsers can't read system CPU/GPU; this is OUR process's cost, which is what was asked.)
+			const workTotalMs = dbgCompositeMs + dbgReadbackMs;
+			const work = dbgComposited
+				? (workTotalMs / dbgComposited).toFixed(1)
+				: "0";
+			const busy = Math.round(workTotalMs / 10);
 			dbgOverlay.style.color =
 				out >= 20 ? "#4ade80" : out >= 10 ? "#fbbf24" : "#f87171";
-			dbgOverlay.textContent = `● ${out} fps out · src ${dbgSrcRead} · drop ${dbgEncDrop} · ${avg}ms`;
+			dbgOverlay.textContent = `● ${out} fps · src ${dbgSrcRead} · work ${work}ms · busy ${busy}% · drop ${dbgEncDrop}`;
 		}
 		dbgSrcRead = 0;
 		dbgThrottle = 0;
 		dbgComposited = 0;
 		dbgCompositeMs = 0;
+		dbgReadbackMs = 0;
 		dbgWritten = 0;
 		dbgEncDrop = 0;
 	}, 1000);
@@ -544,7 +554,9 @@ export const createCameraCompositor = async (
 					continue;
 				}
 				lastWrittenUs = ts;
+				const rbStart = performance.now();
 				const out = new FrameCtor(canvas, { timestamp: ts });
+				dbgReadbackMs += performance.now() - rbStart;
 				dbgInflight++;
 				dbgWritten++;
 				// VideoFrames are GPU-backed — close on both success and failure of the (unawaited) write.
