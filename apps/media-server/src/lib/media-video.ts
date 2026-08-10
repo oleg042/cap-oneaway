@@ -140,7 +140,11 @@ const DEFAULT_OPTIONS: Required<VideoProcessingOptions> = {
 	maxHeight: 1080,
 	videoBitrate: "5M",
 	audioBitrate: "64k",
-	crf: 23,
+	// The capture is VP9/webm (chosen for progressive upload), so a VP9->H264 re-encode here is
+	// unavoidable. CRF 23 crushed 1080p screen text to ~0.5 Mbps — the second lossy generation was
+	// throwing away most of the detail. CRF 18 is near-visually-lossless: it preserves the source's
+	// sharpness through the required re-encode. Files stay small anyway (screen content is low-entropy).
+	crf: 18,
 	preset: "fast",
 	remuxOnly: false,
 	timeoutMs: PROCESS_TIMEOUT_MS,
