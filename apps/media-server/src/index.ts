@@ -1,10 +1,24 @@
+import os from "node:os";
 import app from "./app";
-import { abortAllJobs } from "./lib/job-manager";
+import { abortAllJobs, getSystemResources } from "./lib/job-manager";
 import { cancelAllMediaOperations } from "./lib/media-operations";
 
 const port = Number(process.env.PORT) || 3456;
 
 console.log(`[media-server] Starting on port ${port}`);
+
+// Boot diagnostic: report the container's REAL CPU/memory budget (cgroup-derived) so FFmpeg -threads
+// can be sized to the box instead of guessed. os.cpus() = raw host cores (over-reports in a container);
+// getSystemResources().cpuCapacity/effectiveMax reflect the actual container allotment + concurrency cap.
+try {
+	console.log(
+		`[media-server] boot-resources: hostCores=${os.cpus().length} ${JSON.stringify(getSystemResources())}`,
+	);
+} catch (err) {
+	console.log(
+		`[media-server] boot-resources: unavailable (${(err as Error)?.message})`,
+	);
+}
 
 let shuttingDown = false;
 
