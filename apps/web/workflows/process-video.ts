@@ -329,12 +329,19 @@ async function processVideoOnMediaServer(
 	// cached workflow-step replay doesn't overwrite a real value with ~0.
 	const transcodeMs = Date.now() - transcodeStartedAt;
 	if (Number.isFinite(transcodeMs) && transcodeMs > 200) {
-		await db()
-			.update(videos)
-			.set({
-				metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('transcodeMs', ${Math.round(transcodeMs)})))`,
-			})
-			.where(eq(videos.id, videoId as Video.VideoId));
+		// Non-fatal metric: a DB hiccup on this write must NEVER fail an already-transcoded video
+		// (result.mp4 is already produced + uploaded). Swallow so processVideoWorkflow's catch — which
+		// would setProcessingError + throw FatalError — can't turn a good video into a "failed" one.
+		try {
+			await db()
+				.update(videos)
+				.set({
+					metadata: sql`JSON_MERGE_PATCH(COALESCE(${videos.metadata}, JSON_OBJECT()), JSON_OBJECT('oaPipeline', JSON_OBJECT('transcodeMs', ${Math.round(transcodeMs)})))`,
+				})
+				.where(eq(videos.id, videoId as Video.VideoId));
+		} catch {
+			/* metric write failed — ignore */
+		}
 	}
 
 	return completion;
