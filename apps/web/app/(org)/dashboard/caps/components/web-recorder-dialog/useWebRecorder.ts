@@ -1244,12 +1244,6 @@ export const useWebRecorder = ({
 				});
 			}
 
-			// A screen/document is a "detail" surface, not "motion": hint the encoder to
-			// spend its bit budget on sharp glyph/UI edges over smooth motion. Same bitrate,
-			// crisper text. Set on the exact composited track MediaRecorder will encode.
-			for (const track of mixedStream.getVideoTracks()) {
-				track.contentHint = "detail";
-			}
 			const recorder = new MediaRecorder(mixedStream, {
 				mimeType: pipeline.mimeType,
 			});
